@@ -1,0 +1,64 @@
+/* src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   🎨 SISTEMA DE TEMAS (MARCA BLANCA / MULTI-TENANT)
+   Cambia estos 3 valores RGB cuando instales el sistema a un nuevo cliente.
+   ========================================================================== */
+@layer base {
+  :root {
+    --color-primary: 0 86 179; /* #0056B3 (Azul Institucional) */
+    --color-accent: 225 29 43; /* #E11D2B (Rojo Institucional) */
+    --color-bg: 241 245 249;   /* #F1F5F9 (Fondo Claro) */
+  }
+}
+
+body {
+  background-color: rgb(var(--color-bg)); /* Fondo gris dinámico */
+}
+
+/* --- CLASE UTILITARIA PARA OCULTAR SCROLLBAR --- */
+/* Esto funciona en Chrome, Safari y Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Esto funciona en IE, Edge y Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* --- SCROLLBAR PERSONALIZADO (UX MEJORADO) --- */
+/* Pega esto al final de tu index.css */
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* Gris suave (Slate-300) */
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.3s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8; /* Se oscurece al tocarlo (Slate-400) */
+}
