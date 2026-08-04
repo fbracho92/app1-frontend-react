@@ -1,6 +1,0 @@
-DATABASE_URL=postgresql://bmsadmin:bTwwhJ566piXqD8D2stb@127.0.0.1:5432/bmsposventa
-SMTP_EMAIL=brachoms2020@gmail.com
-SMTP_HOST=smtp.gmail.com
-SMTP_PASSWORD="ihiq pdxb gmsl ahbg"
-SMTP_PORT=465
-TZ=America/Caracas
