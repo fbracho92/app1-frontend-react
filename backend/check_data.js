@@ -1,10 +1,9 @@
 const { Pool } = require('pg');
+require('dotenv').config();
 
-const connectionString = 'postgresql://pos_venta_demo_user:bDrMiOSfhjBwZFCDfk0V0Epzk9horTbu@dpg-d98plf6cjfls73f33iog-a.ohio-postgres.render.com/pos_venta_demo'; 
-
+// Conexión dinámica usando las variables de entorno locales del servidor (.env)
 const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
+    connectionString: process.env.DATABASE_URL
 });
 
 (async () => {

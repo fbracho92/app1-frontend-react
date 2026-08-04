@@ -1,5 +1,5 @@
 // src/constants/appConstants.js
-export const API_URL = import.meta.env.VITE_API_URL || 'https://bms-digital-pos-venta-8h7l.onrender.com/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://bmsposventa.onrender.com/api';
 export const IVA_RATE = 0.16;
 
 export const EMOJI_OPTIONS = [

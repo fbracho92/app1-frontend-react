@@ -1,11 +1,9 @@
-// backend/03_db_users.js
 const { Pool } = require('pg');
-// Usamos la misma conexión de tu script anterior
-const connectionString = 'postgresql://pos_venta_demo_user:bDrMiOSfhjBwZFCDfk0V0Epzk9horTbu@dpg-d98plf6cjfls73f33iog-a.ohio-postgres.render.com/pos_venta_demo'; 
+require('dotenv').config();
 
+// Conexión dinámica usando las variables de entorno locales del servidor (.env)
 const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
+    connectionString: process.env.DATABASE_URL
 });
 
 const sqlUsersStructure = `

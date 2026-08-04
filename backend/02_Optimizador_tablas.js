@@ -1,12 +1,9 @@
-// apply-optimizations.js
 const { Pool } = require('pg');
+require('dotenv').config();
 
-// URL directa de tu base de datos en Render
-const connectionString = 'postgresql://pos_venta_demo_user:bDrMiOSfhjBwZFCDfk0V0Epzk9horTbu@dpg-d98plf6cjfls73f33iog-a.ohio-postgres.render.com/pos_venta_demo';
-
+// Conexi¨®n din¨¢mica usando las variables de entorno locales del servidor (.env)
 const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
+    connectionString: process.env.DATABASE_URL
 });
 
 const runOptimizations = async () => {
