@@ -66,21 +66,23 @@ const createTenant = async (req, res) => {
             VALUES ($1, $2, $3, $4, $5, $6)
         `, [admin_username, password_hash, `Admin ${nombre_empresa}`, admin_email, adminRoleId, newEmpresaId]);
 
-        // D. Crear la Caja Principal para este nuevo cliente y sus secuencias iniciales
-        const insertCaja = await client.query(`
+        // D. Crear la Caja Principal para este nuevo cliente
+        await client.query(`
             INSERT INTO cash_registers (name, serie, margin_top, is_active, empresa_id)
             VALUES ('Caja Principal', 'A', 45, true, $1) RETURNING id
         `, [newEmpresaId]);
 
-        const newCajaId = insertCaja.rows[0].id;
+        // E. 🚀 FASE 3: Crear secuencias maestras por EMPRESA y PREFIJO (Sin asociar al register_id)
         const secuencias = ['FACTURA', 'FORMA_LIBRE', 'NOTA_CREDITO', 'NOTA_DEBITO', 'NOTA_ENTREGA'];
         
         for (const tipo of secuencias) {
             let prefijo = tipo === 'FACTURA' ? 'A' : (tipo === 'FORMA_LIBRE' ? 'FL-A' : (tipo.includes('CREDITO') ? 'NC-A' : (tipo.includes('DEBITO') ? 'ND-A' : 'NE-A')));
+            
             await client.query(`
-                INSERT INTO document_sequences (document_type, prefix, current_number, register_id, empresa_id)
-                VALUES ($1, $2, 0, $3, $4)
-            `, [tipo, prefijo, newCajaId, newEmpresaId]);
+                INSERT INTO document_sequences (document_type, prefix, current_number, is_active, empresa_id)
+                VALUES ($1, $2, 0, TRUE, $3)
+                ON CONFLICT (empresa_id, document_type, prefix) DO NOTHING
+            `, [tipo, prefijo, newEmpresaId]);
         }
 
         await client.query('COMMIT');
@@ -244,5 +246,4 @@ const registerPayment = async (req, res) => {
     }
 };
 
-// 🚨 Se agregó updateTenant al export final
-module.exports = { getAllTenants, createTenant, renewLicense, toggleSuspension, updateTenant, getAllInvoices, registerPayment};
+module.exports = { getAllTenants, createTenant, renewLicense, toggleSuspension, updateTenant, getAllInvoices, registerPayment };

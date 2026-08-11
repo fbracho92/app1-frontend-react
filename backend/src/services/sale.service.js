@@ -31,7 +31,7 @@ const createSale = async (data, empresaId) => {
     try {
         await client.query('BEGIN');
 
-        // 1. Gesti\u00F3n de Cliente
+        // 1. Gestión de Cliente
         let finalCustomerId = customer_id;
         if (!finalCustomerId && customer_data) {
              if (customer_data.id) finalCustomerId = customer_data.id;
@@ -82,7 +82,7 @@ const createSale = async (data, empresaId) => {
             if (item.is_service) continue; 
 
             const productId = item.product_id;
-            // 🚨 SAAS: Buscamos lotes espec\u00EDficos de la empresa
+            // 🚨 SAAS: Buscamos lotes específicos de la empresa
             const batchesRes = await client.query(`SELECT id, stock FROM product_batches WHERE product_id = $1 AND empresa_id = $2 AND stock > 0 ORDER BY expiration_date ASC NULLS LAST`, [productId, empresaId]);
             let remainingQty = qtyToDeduct;
             
@@ -102,7 +102,7 @@ const createSale = async (data, empresaId) => {
             }
         }
         
-        // 4. C\u00E1lculos Financieros e IGTF
+        // 4. Cálculos Financieros e IGTF
         const IVA_RATE = 0.16;
         const ivaUsd = subtotalTaxableUsd * IVA_RATE;
         const discountUsd = discount ? parseFloat(discount) : 0;
@@ -118,7 +118,7 @@ const createSale = async (data, empresaId) => {
         let amountPaidUsd = finalTotalUsd; 
         
         if (is_credit) {
-            if (!finalCustomerId) throw new Error("No se puede procesar venta a CR\u00C9DITO sin seleccionar un Cliente.");
+            if (!finalCustomerId) throw new Error("No se puede procesar venta a CRÉDITO sin seleccionar un Cliente.");
             const initialPayment = amount_paid ? parseFloat(amount_paid) : 0;
             if (initialPayment > 0 && initialPayment < finalTotalUsd) {
                 saleStatus = 'PARCIAL';
@@ -136,7 +136,7 @@ const createSale = async (data, empresaId) => {
         const finalPaymentMethod = (payment_method || 'CONTADO') + capitalTags;
 
         // ====================================================================================
-        // 🚀 FASE SAAS: CORRELATIVOS INDEPENDIENTES PARA TODOS LOS DOCUMENTOS
+        // 🚀 FASE 2: BLINDAJE ATÓMICO DE SECUENCIAS MULTI-EMPRESA
         // ====================================================================================
         let finalInvoiceNumber = fiscal_invoice_number || null;
         let finalFiscalControl = fiscal_control_number || null;
@@ -165,30 +165,27 @@ const createSale = async (data, empresaId) => {
         if (invoice_type === 'FORMA_LIBRE' || invoice_type === 'FISCAL') seqDocType = 'FACTURA';
         else if (invoice_type === 'NOTA_ENTREGA') seqDocType = 'NOTA_ENTREGA';
 
-        // 3. Generar el Correlativo SI NO VIENE de un spooler fiscal (impresora f\u00EDsica)
+        // 3. Generar el Correlativo SI NO VIENE de un spooler fiscal (impresora física)
         if (!finalInvoiceNumber) {
-            let seqRes = await client.query(`
-                UPDATE document_sequences 
-                SET current_number = current_number + 1, updated_at = CURRENT_TIMESTAMP 
-                WHERE document_type = $1 AND register_id = $2 AND empresa_id = $3 AND is_active = TRUE
+            // A. Obtener la serie configurada para la caja que está operando
+            const cajaRes = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [activeRegisterId, empresaId]);
+            const serie = cajaRes.rows.length > 0 ? cajaRes.rows[0].serie : 'A';
+            
+            let defaultPrefix = '';
+            if (seqDocType === 'FACTURA') defaultPrefix = `FL-${serie}`;
+            else if (seqDocType === 'NOTA_ENTREGA') defaultPrefix = `NE-${serie}`;
+            else if (seqDocType === 'TICKET') defaultPrefix = `T-${serie}`;
+
+            // B. JUGADA PROFESIONAL: UPSERT Atómico.
+            const seqRes = await client.query(`
+                INSERT INTO document_sequences (document_type, prefix, current_number, empresa_id, is_active)
+                VALUES ($1, $2, 1, $3, TRUE)
+                ON CONFLICT (empresa_id, document_type, prefix)
+                DO UPDATE SET 
+                    current_number = document_sequences.current_number + 1, 
+                    updated_at = CURRENT_TIMESTAMP
                 RETURNING prefix, current_number
-            `, [seqDocType, activeRegisterId, empresaId]);
-
-            if (!seqRes || seqRes.rows.length === 0) {
-                const cajaRes = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [activeRegisterId, empresaId]);
-                const serie = cajaRes.rows.length > 0 ? cajaRes.rows[0].serie : 'A';
-                
-                let defaultPrefix = '';
-                if (seqDocType === 'FACTURA') defaultPrefix = `FL-${serie}`;
-                else if (seqDocType === 'NOTA_ENTREGA') defaultPrefix = `NE-${serie}`;
-                else if (seqDocType === 'TICKET') defaultPrefix = `T-${serie}`;
-
-                await client.query(`
-                    INSERT INTO document_sequences (document_type, prefix, current_number, register_id, is_active, empresa_id)
-                    VALUES ($1, $2, 1, $3, TRUE, $4)
-                `, [seqDocType, defaultPrefix, activeRegisterId, empresaId]);
-                seqRes = { rows: [{ prefix: defaultPrefix, current_number: 1 }] };
-            }
+            `, [seqDocType, defaultPrefix, empresaId]);
 
             const { prefix, current_number } = seqRes.rows[0];
             const paddedNum = current_number.toString().padStart(8, '0');
@@ -222,7 +219,7 @@ const createSale = async (data, empresaId) => {
             discountUsd.toFixed(2), !!is_delivery, is_delivery && delivery_info ? delivery_info : null,
             finalInvoiceNumber, finalFiscalControl, fiscal_machine_serial || null, finalIgtfUsd.toFixed(2), finalIgtfVes.toFixed(2),
             activeRegisterId, empresaId, 
-            internalControlNumber // 🚀 INYECTADO AQU\u00CD
+            internalControlNumber // 🚀 INYECTADO AQUÍ
         ];
         
         const saleResult = await client.query(saleQuery, saleValues);
@@ -236,7 +233,7 @@ const createSale = async (data, empresaId) => {
         const movementParams = [];
 
         processedItems.forEach((item, index) => {
-            // 🚨 SAAS: 5 par\u00E1metros por fila
+            // 🚨 SAAS: 5 parámetros por fila
             const offset = index * 5;
             itemValues.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
             itemParams.push(saleId, item.product_id, item.quantity, item.price_usd, empresaId);
@@ -262,7 +259,7 @@ const createSale = async (data, empresaId) => {
         return { 
             success: true, 
             saleId, 
-            created_at: officialCreatedAt, // 👈 Se env\u00EDa la hora real devuelta por la BD
+            created_at: officialCreatedAt, // 👈 Se envía la hora real devuelta por la BD
             fiscal_invoice_number: finalInvoiceNumber, 
             fiscal_control_number: finalFiscalControl,
             control_number: internalControlNumber,
@@ -331,7 +328,7 @@ const payCredit = async (saleId, { paymentDetails, amountUSD }, empresaId) => {
         const currentPaid = parseFloat(sale.amount_paid_usd || 0);
         const payAmount = amountUSD ? parseFloat(amountUSD) : (total - currentPaid);
         
-        if (payAmount <= 0) throw new Error('Monto inv\u00E1lido');
+        if (payAmount <= 0) throw new Error('Monto inválido');
         const newPaid = currentPaid + payAmount;
         if (newPaid > total + 0.05) throw new Error('El monto excede la deuda restante.');
 
@@ -427,7 +424,7 @@ const voidSale = async (saleId, payloadData, empresaId) => {
         // 🚨 SAAS: Validamos propiedad de la venta
         const saleCheck = await client.query('SELECT status, invoice_type, register_id FROM sales WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [saleId, empresaId]);
         if (saleCheck.rows.length === 0) throw new Error('Venta no encontrada');
-        if (saleCheck.rows[0].status === 'ANULADO') throw new Error('Ya est\u00E1 anulada');
+        if (saleCheck.rows[0].status === 'ANULADO') throw new Error('Ya está anulada');
         if (saleCheck.rows[0].status === 'PARCIAL') throw new Error('No se puede anular venta PARCIAL.');
 
         const invoiceType = saleCheck.rows[0].invoice_type;
@@ -464,23 +461,26 @@ const voidSale = async (saleId, payloadData, empresaId) => {
 
         if (!finalNcNumber && invoiceType === 'FORMA_LIBRE') {
             
-            // 🚨 SAAS: Validamos secuencia de NC por empresa
-            const seqRes = await client.query(`
-                UPDATE document_sequences 
-                SET current_number = current_number + 1, updated_at = CURRENT_TIMESTAMP 
-                WHERE document_type = 'NOTA_CREDITO' AND register_id = $1 AND empresa_id = $2 AND is_active = TRUE 
-                RETURNING prefix, current_number
-            `, [originalRegisterId, empresaId]);
+            // 🚀 FASE 2: UPSERT Atómico para NOTA DE CRÉDITO
+            const cajaRes = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2", [originalRegisterId, empresaId]);
+            const serie = cajaRes.rows.length > 0 ? cajaRes.rows[0].serie : 'A';
+            const defaultPrefix = `NC-${serie}`;
 
-            if (seqRes.rows.length > 0) {
-                const { prefix, current_number } = seqRes.rows[0];
-                const paddedNum = current_number.toString().padStart(8, '0');
-                
-                finalNcNumber = paddedNum;
-                finalNcControl = creditNoteControl ? creditNoteControl : `${prefix}${paddedNum}`; 
-            } else {
-                throw new Error(`Error Fiscal: La secuencia de Nota de Cr\u00E9dito no est\u00E1 inicializada o activa para la estaci\u00F3n actual.`);
-            }
+            const seqRes = await client.query(`
+                INSERT INTO document_sequences (document_type, prefix, current_number, empresa_id, is_active)
+                VALUES ('NOTA_CREDITO', $1, 1, $2, TRUE)
+                ON CONFLICT (empresa_id, document_type, prefix)
+                DO UPDATE SET 
+                    current_number = document_sequences.current_number + 1, 
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING prefix, current_number
+            `, [defaultPrefix, empresaId]);
+
+            const { prefix, current_number } = seqRes.rows[0];
+            const paddedNum = current_number.toString().padStart(8, '0');
+            
+            finalNcNumber = paddedNum;
+            finalNcControl = creditNoteControl ? creditNoteControl : `${prefix}${paddedNum}`; 
         }
         
         await client.query(`
@@ -535,7 +535,7 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
         if (invoice_type === 'FORMA_LIBRE') {
             const customerIdNumber = saleCheck.rows[0].id_number || '';
             if (!customerIdNumber || customerIdNumber === 'S/I' || customerIdNumber.includes('00000000')) {
-                throw new Error('Providencia 0071: Prohibido emitir Forma Libre a Consumidor Final. El documento original carece de RIF v\u00E1lido.');
+                throw new Error('Providencia 0071: Prohibido emitir Forma Libre a Consumidor Final. El documento original carece de RIF válido.');
             }
         }
 
@@ -551,25 +551,20 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
 
         if (invoice_type === 'FORMA_LIBRE' && !finalInvoiceNumber) {
             
-            // 🚨 SAAS: Validamos secuencia por caja y empresa
-            let seqRes = await client.query(`
-                UPDATE document_sequences 
-                SET current_number = current_number + 1, updated_at = CURRENT_TIMESTAMP 
-                WHERE document_type = 'FACTURA' AND register_id = $1 AND empresa_id = $2 AND is_active = TRUE
+            // 🚀 FASE 2: UPSERT Atómico para FACTURA
+            const regCheck = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2", [originalRegisterId, empresaId]);
+            const serie = regCheck.rows.length > 0 ? regCheck.rows[0].serie : 'A'; 
+            const defaultPrefix = `FL-${serie}`;
+
+            const seqRes = await client.query(`
+                INSERT INTO document_sequences (document_type, prefix, current_number, empresa_id, is_active)
+                VALUES ('FACTURA', $1, 1, $2, TRUE)
+                ON CONFLICT (empresa_id, document_type, prefix)
+                DO UPDATE SET 
+                    current_number = document_sequences.current_number + 1, 
+                    updated_at = CURRENT_TIMESTAMP
                 RETURNING prefix, current_number
-            `, [originalRegisterId, empresaId]);
-
-            if (!seqRes || seqRes.rows.length === 0) {
-                const regCheck = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2", [originalRegisterId, empresaId]);
-                const serie = regCheck.rows.length > 0 ? regCheck.rows[0].serie : 'A'; 
-
-                await client.query(`
-                    INSERT INTO document_sequences (document_type, prefix, current_number, register_id, is_active, empresa_id)
-                    VALUES ('FACTURA', $1, 1, $2, TRUE, $3)
-                `, [`FL-${serie}`, originalRegisterId, empresaId]);
-
-                seqRes = { rows: [{ prefix: `FL-${serie}`, current_number: 1 }] };
-            }
+            `, [defaultPrefix, empresaId]);
 
             const { prefix, current_number } = seqRes.rows[0];
             const paddedNum = current_number.toString().padStart(8, '0'); 
