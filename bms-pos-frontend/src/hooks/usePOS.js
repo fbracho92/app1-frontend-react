@@ -352,7 +352,8 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                     buttonsStyling: false
                 }).then(() => {
                     setIsPaymentModalOpen(false);
-                    setIsCustomerModalOpen(true);
+                    // ??? TRANSICIÓN LIMPIA CERTIFICADA
+                    setTimeout(() => setIsCustomerModalOpen(true), 150);
                 });
             }
 
@@ -375,7 +376,10 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                 if (result.isConfirmed) {
                     payloadCustomerData = { full_name: 'CONSUMIDOR FINAL', id_number: 'V000000000', institution: 'S/D' };
                 } else if (result.isDenied) { 
-                    setIsPaymentModalOpen(false); setIsCustomerModalOpen(true); return; 
+                    setIsPaymentModalOpen(false); 
+                    // ??? TRANSICIÓN LIMPIA CERTIFICADA
+                    setTimeout(() => setIsCustomerModalOpen(true), 150); 
+                    return; 
                 } else { return; }
             }
 
@@ -394,7 +398,7 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                             </p>
                             
                             <div class="flex flex-col gap-3 mt-6">
-                                <!-- ? BOTÓN GIGANTE 1: VENTA RÁPIDA (CON ID EN VEZ DE ONCLICK) -->
+                                <!-- ? BOTÓN GIGANTE 1: VENTA RÁPIDA -->
                                 <button id="btn-venta-rapida" class="w-full text-left bg-white hover:bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-400 transition-all duration-300 active:scale-95 group shadow-sm hover:shadow-md outline-none flex items-center gap-4">
                                     <div class="bg-slate-100 group-hover:bg-white border border-slate-200 rounded-full w-12 h-12 flex items-center justify-center shrink-0 shadow-sm transition-colors">
                                         <span class="text-xl">&#9889;</span>
@@ -405,7 +409,7 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                                     </div>
                                 </button>
                                 
-                                <!-- ?? BOTÓN GIGANTE 2: BUSCAR CLIENTE (CON ID EN VEZ DE ONCLICK) -->
+                                <!-- ?? BOTÓN GIGANTE 2: BUSCAR CLIENTE -->
                                 <button id="btn-buscar-cliente" class="w-full text-left bg-blue-50/50 hover:bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 active:scale-95 group shadow-sm hover:shadow-md outline-none flex items-center gap-4">
                                     <div class="bg-white border border-blue-200 rounded-full w-12 h-12 flex items-center justify-center shrink-0 shadow-sm">
                                         <span class="text-xl">&#128269;</span>
@@ -432,7 +436,7 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                     },
                     buttonsStyling: false,
                     allowOutsideClick: false,
-                    // ?? LA MAGIA: Escuchamos los clics de forma segura una vez que el modal se renderiza
+                    // LA MAGIA: Escuchamos los clics de forma segura una vez que el modal se renderiza
                     didOpen: () => {
                         const btnRapida = document.getElementById('btn-venta-rapida');
                         const btnBuscar = document.getElementById('btn-buscar-cliente');
@@ -449,7 +453,10 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                 if (result.isConfirmed) {
                     payloadCustomerData = { full_name: 'CLIENTE CASUAL', id_number: 'S/I', institution: 'S/D' };
                 } else if (result.isDenied) { 
-                    setIsPaymentModalOpen(false); setIsCustomerModalOpen(true); return; 
+                    setIsPaymentModalOpen(false); 
+                    // ??? TRANSICIÓN LIMPIA CERTIFICADA
+                    setTimeout(() => setIsCustomerModalOpen(true), 150); 
+                    return; 
                 } else { 
                     return; 
                 }
@@ -683,8 +690,11 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
         }
 
         if (creditAmount > 0 || donationAmount > 0 || isDelivery) { 
-            setIsCustomerModalOpen(true); 
+            // ??? 1. Primero cerramos el modal actual
             setIsPaymentModalOpen(false); 
+            
+            // ??? 2. TRANSICIÓN LIMPIA CERTIFICADA: Esperamos 150ms y abrimos el nuevo
+            setTimeout(() => setIsCustomerModalOpen(true), 150);
         }
         else {
             processSale(false, changeNote);
@@ -1028,9 +1038,10 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
             try {
                 Swal.fire({ title: 'Pausando Orden...', didOpen: () => Swal.showLoading(), customClass: { popup: 'rounded-2xl' }, allowOutsideClick: false });
                 
+                // 1. Guardamos la orden en la BD (único bloqueo necesario para asegurar los datos)
                 await HeldOrderService.save({ referenceName: result.value, cartData: cart });
                 
-                // Limpieza total de la estacion para el siguiente cliente
+                // 2. Limpieza total de la estación para el siguiente cliente
                 setCart([]); 
                 handleApplyDiscount('NONE', 0); 
                 setIsDelivery(false);
@@ -1038,24 +1049,95 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                 setCustomerData({ full_name: '', id_number: '', phone: '', institution: '' });
                 setSelectedCustomerId(null);
                 
-                await fetchHeldOrders();
+                // ?? 3. MAGIA UX: Refrescamos la lista de órdenes en SEGUNDO PLANO (Sin el 'await')
+                // El sistema ya no se quedará esperando la respuesta de la red para quitar el loading.
+                fetchHeldOrders();
                 
-                Swal.fire({ icon: 'success', title: 'Orden Pausada', text: `Guardada como "${result.value}"`, timer: 1500, showConfirmButton: false, customClass: { popup: 'rounded-[2rem]' } });
+                // 4. Mostramos el éxito al instante (Reducimos el timer de 1500 a 1000ms para mayor fluidez)
+                Swal.fire({ 
+                    icon: 'success', 
+                    title: 'Orden Pausada', 
+                    text: `Guardada como "${result.value}"`, 
+                    timer: 1000, 
+                    showConfirmButton: false, 
+                    customClass: { popup: 'rounded-[2rem]' } 
+                });
             } catch (error) {
                 Swal.fire({ icon: 'error', title: 'Error de Sistema', text: 'No se pudo pausar la orden. Intente nuevamente.', customClass: { popup: 'rounded-[2rem]' }, confirmButtonColor: '#3b82f6' });
             }
         }
     };
 
-    const handleResumeOrder = async (order) => {
+    // LOGICA BLINDADA: 0 MILISEGUNDOS Y REEMPLAZO NATIVO DE MODALES
+    const handleResumeOrder = async (order, liveProducts = []) => {
+        // 1. Verificamos si hay que reemplazar un carrito activo
         if (cart.length > 0) {
-            const confirm = await Swal.fire({ title: '?Reemplazar Carrito?', icon: 'warning', showCancelButton: true });
-            if (!confirm.isConfirmed) return;
+            const confirm = await Swal.fire({ 
+                title: '&iquest;Reemplazar Carrito?', 
+                text: 'El carrito actual se borrar&aacute;.',
+                icon: 'warning', 
+                showCancelButton: true,
+                confirmButtonColor: '#e11d48',
+                customClass: { popup: 'rounded-[2.5rem]' } 
+            });
+            if (!confirm.isConfirmed) return; 
         }
-        setCart(order.cart_data); await HeldOrderService.delete(order.id); await fetchHeldOrders();
+
+        let stockErrors = [];
+        
+        // 2. Cruzamos la orden pausada contra la memoria RAM instantanea
+        const verifiedCart = order.cart_data.map(item => {
+            if (item.is_service || item.is_raw_material) return item; 
+            
+            // Usamos igualdad flexible (==) para maxima seguridad al comparar IDs
+            const liveProduct = liveProducts.find(p => p.id == item.id);
+            const currentStock = liveProduct ? parseFloat(liveProduct.stock || 0) : 0;
+            
+            // Si el stock real bajo y ya no alcanza para la orden pausada, disparamos error
+            if (item.quantity > currentStock) {
+                // Usamos &bull; en lugar del emoji/caracter para asegurar compatibilidad
+                stockErrors.push(`&bull; <b>${item.name}</b>: Solicitados (${item.quantity}) / Disponibles (${currentStock})`);
+            }
+            
+            return { ...item, stock: currentStock }; 
+        });
+
+        // 3. EL ESCUDO: Si hubo descuadre, mostramos el error y ABORTAMOS la carga.
+        if (stockErrors.length > 0) {
+            return Swal.fire({
+                icon: 'error',
+                title: '<h3 class="text-xl font-black text-slate-800">Stock Insuficiente</h3>',
+                html: `
+                    <p class="text-sm text-slate-600 mb-3">El inventario cambi&oacute; mientras la orden <b>"${order.reference_name}"</b> estaba en espera:</p>
+                    <div class="bg-rose-50 border border-rose-100 p-3 rounded-xl text-left text-xs font-bold text-rose-700 space-y-1">
+                        ${stockErrors.join('<br>')}
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-md' },
+                buttonsStyling: false
+            });
+        }
+
+        // 4. CARGA INMEDIATA Y CIERRE VISUAL (0 Milisegundos de latencia en UI)
+        setCart(verifiedCart); 
+        Swal.close(); 
+        
+        // 5. OPERACIONES DE RED EN SEGUNDO PLANO (Background Fetching)
+        HeldOrderService.delete(order.id)
+            .then(() => fetchHeldOrders())
+            .catch(err => console.error("Error limpiando orden pausada:", err));
     };
 
-    const handleDeleteHeldOrder = async (id) => { await HeldOrderService.delete(id); await fetchHeldOrders(); };
+    const handleDeleteHeldOrder = (id) => { 
+        // Cierre visual inmediato sin esperar al servidor
+        Swal.close(); 
+        
+        // Borrado y actualización de lista en segundo plano
+        HeldOrderService.delete(id)
+            .then(() => fetchHeldOrders())
+            .catch(err => console.error("Error eliminando orden:", err));
+    };
 
     const isFormReadyToSubmit = customerData.full_name.trim() && customerData.id_number.trim();
 

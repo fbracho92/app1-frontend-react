@@ -451,8 +451,14 @@ function MainApp({ user, handleLogout }) {
         }
     };
 
+    // 🛡️ ESCUDO 1: Flag para evitar llamadas simultáneas (Anti-Spam)
+    const isFetchingRef = useRef(false);
+
     const fetchData = async () => {
-        if (!user) return;
+        if (!user || isFetchingRef.current) return;
+        
+        isFetchingRef.current = true;
+        
         try {
             const statusRes = await SettingsService.getExchangeRate();
             const currentBcvRate = statusRes.data.bcv_rate;
@@ -552,11 +558,18 @@ function MainApp({ user, handleLogout }) {
             const groupedRes = await CreditService.getGrouped();
             setGroupedCredits(Array.isArray(groupedRes.data) ? groupedRes.data : []);
 
-            const cashRes = await CashService.getStatus();
-            if (cashRes.data.status === 'ABIERTA') {
-                setIsCashOpen(true);
-                setCashShift(cashRes.data.shift_info);
-            } else {
+            // 🛡️ ESCUDO 2: Aislamos la consulta de la caja para que un error 403 no tumbe la App
+            try {
+                 const cashRes = await CashService.getStatus();
+                 if (cashRes.data && cashRes.data.status === 'ABIERTA') {
+                     setIsCashOpen(true);
+                     setCashShift(cashRes.data.shift_info);
+                 } else {
+                     setIsCashOpen(false);
+                     setCashShift(null);
+                 }
+            } catch (cashError) {
+                // Manejo silencioso: Si tira 403 (Caja ocupada), la App sigue funcionando normal
                 setIsCashOpen(false);
                 setCashShift(null);
             }
@@ -566,6 +579,9 @@ function MainApp({ user, handleLogout }) {
             console.error("Error fetching data:", error);
             if (!dailySalesList) setDailySalesList([]);
             setLoading(false);
+        } finally {
+            // Liberamos la bandera para permitir futuras recargas
+            isFetchingRef.current = false;
         }
     };
 
@@ -1012,6 +1028,7 @@ function MainApp({ user, handleLogout }) {
                         tenantBrand={tenantBrand}
                         isFallbackActive={isFallbackActive}
                         bcvRate={bcvRate}
+                        products={products}
                         posSearchQuery={posSearchQuery}
                         setPosSearchQuery={setPosSearchQuery}
                         

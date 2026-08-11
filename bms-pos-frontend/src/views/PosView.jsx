@@ -160,7 +160,8 @@ const PosView = ({
     lowStockCount = 0,    
     handleOpenStockAlerts,
     productsPerPage = 12,
-    setProductsPerPage
+    setProductsPerPage,
+    products
 }) => {
 
     const [isMobileCartOpen, setIsMobileCartOpen] = React.useState(false);
@@ -481,16 +482,34 @@ const PosView = ({
                                     customClass: { popup: 'rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-white/80 bg-slate-50/90 backdrop-blur-xl' },
                                     didOpen: () => {
                                         document.querySelectorAll('.resume-btn').forEach(btn => {
-                                            btn.addEventListener('click', () => {
+                                            btn.addEventListener('click', (e) => {
+                                                // 🛡️ 1. FRENAMOS EL BURBUJEO DEL RATÓN
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
                                                 const order = heldOrders.find(o => o.id == btn.dataset.id);
-                                                handleResumeOrder(order);
-                                                Swal.close();
+                                                if (order) handleResumeOrder(order, products);
                                             });
                                         });
+
                                         document.querySelectorAll('.delete-btn').forEach(btn => {
-                                            btn.addEventListener('click', () => {
+                                            btn.addEventListener('click', (e) => {
+                                                // 🛡️ 1. FRENAMOS EL BURBUJEO
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
+                                                // 🚀 UX: Feedback visual instantáneo para ocultar el lag de red
+                                                Swal.fire({
+                                                    title: '<h3 class="text-xl font-black text-slate-800 mt-2">Eliminando orden...</h3>',
+                                                    html: '<p class="text-sm text-slate-500 font-medium">Actualizando base de datos</p>',
+                                                    allowOutsideClick: false,
+                                                    showConfirmButton: false,
+                                                    customClass: { popup: 'rounded-[2.5rem]' },
+                                                    didOpen: () => Swal.showLoading()
+                                                });
+                                                
+                                                // 🛡️ 2. Ejecuta el borrado en segundo plano
                                                 handleDeleteHeldOrder(btn.dataset.id);
-                                                Swal.close();
                                             });
                                         });
                                     }
@@ -601,20 +620,38 @@ const PosView = ({
                                 showConfirmButton: false, showCloseButton: true, width: '600px',
                                 customClass: { popup: 'rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-white/80 bg-slate-50/90 backdrop-blur-xl' },
                                 didOpen: () => {
-                                    document.querySelectorAll('.resume-btn').forEach(btn => {
-                                        btn.addEventListener('click', () => {
-                                            const order = heldOrders.find(o => o.id == btn.dataset.id);
-                                            handleResumeOrder(order);
-                                            Swal.close();
+                                        document.querySelectorAll('.resume-btn').forEach(btn => {
+                                            btn.addEventListener('click', (e) => {
+                                                // 🛡️ 1. FRENAMOS EL BURBUJEO DEL RATÓN
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
+                                                const order = heldOrders.find(o => o.id == btn.dataset.id);
+                                                if (order) handleResumeOrder(order, products);
+                                            });
                                         });
-                                    });
-                                    document.querySelectorAll('.delete-btn').forEach(btn => {
-                                        btn.addEventListener('click', () => {
-                                            handleDeleteHeldOrder(btn.dataset.id);
-                                            Swal.close();
+
+                                        document.querySelectorAll('.delete-btn').forEach(btn => {
+                                            btn.addEventListener('click', (e) => {
+                                                // 🛡️ 1. FRENAMOS EL BURBUJEO
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
+                                                // 🚀 UX: Feedback visual instantáneo para ocultar el lag de red
+                                                Swal.fire({
+                                                    title: '<h3 class="text-xl font-black text-slate-800 mt-2">Eliminando orden...</h3>',
+                                                    html: '<p class="text-sm text-slate-500 font-medium">Actualizando base de datos</p>',
+                                                    allowOutsideClick: false,
+                                                    showConfirmButton: false,
+                                                    customClass: { popup: 'rounded-[2.5rem]' },
+                                                    didOpen: () => Swal.showLoading()
+                                                });
+                                                
+                                                // 🛡️ 2. Ejecuta el borrado en segundo plano
+                                                handleDeleteHeldOrder(btn.dataset.id);
+                                            });
                                         });
-                                    });
-                                }
+                                    }
                             });
                         }} 
                         className={`shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white rounded-xl border transition-all outline-none active:scale-95 shadow-sm ${heldOrders?.length > 0 ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:border-indigo-200'}`}
