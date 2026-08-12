@@ -202,7 +202,6 @@ const createSale = async (data, empresaId) => {
         // ====================================================================================
 
         // 6. Insertar Venta con Datos Fiscales
-        // 🚀 INYECTAMOS 'control_number' DIRECTO EN LA TABLA SALES
         const saleQuery = `
             INSERT INTO sales (
                 total_usd, total_ves, bcv_rate_snapshot, payment_method, status, customer_id, due_date,
@@ -219,12 +218,12 @@ const createSale = async (data, empresaId) => {
             discountUsd.toFixed(2), !!is_delivery, is_delivery && delivery_info ? delivery_info : null,
             finalInvoiceNumber, finalFiscalControl, fiscal_machine_serial || null, finalIgtfUsd.toFixed(2), finalIgtfVes.toFixed(2),
             activeRegisterId, empresaId, 
-            internalControlNumber // 🚀 INYECTADO AQUÍ
+            internalControlNumber 
         ];
         
         const saleResult = await client.query(saleQuery, saleValues);
         const saleId = saleResult.rows[0].id;
-        const officialCreatedAt = saleResult.rows[0].created_at; // 🔒 Hora inalterable de la BD
+        const officialCreatedAt = saleResult.rows[0].created_at; 
 
         // 7. Insert Masivo de Detalles y Kardex
         const itemValues = [];
@@ -233,14 +232,12 @@ const createSale = async (data, empresaId) => {
         const movementParams = [];
 
         processedItems.forEach((item, index) => {
-            // 🚨 SAAS: 5 parámetros por fila
             const offset = index * 5;
             itemValues.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
             itemParams.push(saleId, item.product_id, item.quantity, item.price_usd, empresaId);
 
             if (!item.is_service) {
                 const mOffset = movementParams.length;
-                // 🚨 SAAS: Validamos kardex y calculamos nuevo stock por empresa
                 movementValues.push(`($${mOffset + 1}, 'OUT', $${mOffset + 2}, 'VENTA', $${mOffset + 3}, (SELECT stock FROM products WHERE id = $${mOffset + 1} AND empresa_id = $${mOffset + 4}), $${mOffset + 4})`);
                 movementParams.push(item.product_id, item.quantity, `VENTA #${saleId}`, empresaId);
             }
@@ -259,7 +256,7 @@ const createSale = async (data, empresaId) => {
         return { 
             success: true, 
             saleId, 
-            created_at: officialCreatedAt, // 👈 Se envía la hora real devuelta por la BD
+            created_at: officialCreatedAt, 
             fiscal_invoice_number: finalInvoiceNumber, 
             fiscal_control_number: finalFiscalControl,
             control_number: internalControlNumber,
@@ -275,7 +272,6 @@ const createSale = async (data, empresaId) => {
     }
 };
 
-// 🚨 SAAS: Recibimos empresaId
 const getSaleById = async (id, empresaId) => {
     const client = await pool.connect();
     try {
@@ -315,7 +311,6 @@ const getSaleById = async (id, empresaId) => {
     }
 };
 
-// 🚨 SAAS: Recibimos empresaId
 const payCredit = async (saleId, { paymentDetails, amountUSD }, empresaId) => {
     const client = await pool.connect();
     try {
@@ -346,7 +341,6 @@ const payCredit = async (saleId, { paymentDetails, amountUSD }, empresaId) => {
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 };
 
-// 🚨 SAAS: Recibimos empresaId
 const payAllCustomerCredits = async (customerId, { paymentDetails, amountUSD }, empresaId) => {
     const client = await pool.connect();
     try {
@@ -411,7 +405,6 @@ const payAllCustomerCredits = async (customerId, { paymentDetails, amountUSD }, 
     }
 };
 
-// 🚨 SAAS: Recibimos empresaId
 const voidSale = async (saleId, payloadData, empresaId) => {
     const client = await pool.connect();
     try {
@@ -421,12 +414,12 @@ const voidSale = async (saleId, payloadData, empresaId) => {
         const creditNoteNumber = typeof payloadData === 'object' ? payloadData.credit_note_number : null;
         const creditNoteControl = typeof payloadData === 'object' ? payloadData.credit_note_control : null;
 
-        // 🚨 OBTENEMOS DATOS DEL CLIENTE JUNTO CON LA VENTA
+        // 🚨 OBTENEMOS DATOS DEL CLIENTE JUNTO CON LA VENTA (AGREGADO: OF s para evitar error FOR UPDATE)
         const saleCheck = await client.query(`
             SELECT s.status, s.invoice_type, s.register_id, c.id_number 
             FROM sales s 
             LEFT JOIN customers c ON s.customer_id = c.id 
-            WHERE s.id = $1 AND s.empresa_id = $2 FOR UPDATE
+            WHERE s.id = $1 AND s.empresa_id = $2 FOR UPDATE OF s
         `, [saleId, empresaId]);
 
         if (saleCheck.rows.length === 0) throw new Error('Venta no encontrada');
@@ -519,13 +512,14 @@ const voidSale = async (saleId, payloadData, empresaId) => {
             credit_note_control: finalNcControl
         };
     } catch (e) { 
-        await client.query('ROLLBACK'); throw e; 
+        await client.query('ROLLBACK'); 
+        console.error("Error en voidSale:", e);
+        throw e; 
     } finally { 
         client.release(); 
     }
 };
 
-// 🚨 SAAS: Recibimos empresaId
 const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
     const { invoice_type, fiscal_invoice_number, fiscal_control_number, fiscal_machine_serial } = fiscalData;
     const client = await pool.connect();
@@ -533,7 +527,6 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
     try {
         await client.query('BEGIN'); 
 
-        // 🚨 SAAS: Validamos propiedad
         const saleCheck = await client.query(`
             SELECT s.id, s.invoice_type, s.status, s.total_usd, s.register_id, c.id_number 
             FROM sales s
@@ -550,13 +543,6 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
             throw new Error(`Este documento ya ha sido fiscalizado (${dbInvoiceType}) o no es de control interno.`);
         }
 
-        if (invoice_type === 'FORMA_LIBRE') {
-            const customerIdNumber = saleCheck.rows[0].id_number || '';
-            if (!customerIdNumber || customerIdNumber === 'S/I' || customerIdNumber.includes('00000000')) {
-                throw new Error('Providencia 0071: Prohibido emitir Forma Libre a Consumidor Final. El documento original carece de RIF válido.');
-            }
-        }
-
         let originalRegisterId = saleCheck.rows[0].register_id;
         if (!originalRegisterId) {
             const regCheck = await client.query('SELECT id FROM cash_registers WHERE empresa_id = $1 ORDER BY id ASC LIMIT 1', [empresaId]);
@@ -568,8 +554,6 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
         let finalMachineSerial = fiscal_machine_serial || null;
 
         if (invoice_type === 'FORMA_LIBRE' && !finalInvoiceNumber) {
-            
-            // 🚀 FASE 2: UPSERT Atómico para FACTURA
             const regCheck = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2", [originalRegisterId, empresaId]);
             const serie = regCheck.rows.length > 0 ? regCheck.rows[0].serie : 'A'; 
             const defaultPrefix = `FL-${serie}`;
@@ -613,7 +597,7 @@ const billDeliveryNote = async (saleId, fiscalData, empresaId) => {
             finalMachineSerial, 
             formalizationNote, 
             saleId,             
-            empresaId // 🚨 SAAS
+            empresaId 
         ]);
 
         await client.query('COMMIT'); 
