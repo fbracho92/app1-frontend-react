@@ -421,13 +421,20 @@ const voidSale = async (saleId, payloadData, empresaId) => {
         const creditNoteNumber = typeof payloadData === 'object' ? payloadData.credit_note_number : null;
         const creditNoteControl = typeof payloadData === 'object' ? payloadData.credit_note_control : null;
 
-        // 🚨 SAAS: Validamos propiedad de la venta
-        const saleCheck = await client.query('SELECT status, invoice_type, register_id FROM sales WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [saleId, empresaId]);
+        // 🚨 OBTENEMOS DATOS DEL CLIENTE JUNTO CON LA VENTA
+        const saleCheck = await client.query(`
+            SELECT s.status, s.invoice_type, s.register_id, c.id_number 
+            FROM sales s 
+            LEFT JOIN customers c ON s.customer_id = c.id 
+            WHERE s.id = $1 AND s.empresa_id = $2 FOR UPDATE
+        `, [saleId, empresaId]);
+
         if (saleCheck.rows.length === 0) throw new Error('Venta no encontrada');
         if (saleCheck.rows[0].status === 'ANULADO') throw new Error('Ya está anulada');
         if (saleCheck.rows[0].status === 'PARCIAL') throw new Error('No se puede anular venta PARCIAL.');
 
         const invoiceType = saleCheck.rows[0].invoice_type;
+        const customerIdNumber = saleCheck.rows[0].id_number;
         let originalRegisterId = saleCheck.rows[0].register_id; 
         
         if (!originalRegisterId) {
@@ -435,15 +442,25 @@ const voidSale = async (saleId, payloadData, empresaId) => {
             originalRegisterId = regCheck.rows.length > 0 ? regCheck.rows[0].id : 1; 
         }
 
-        // 🚨 SAAS: Validamos items por empresa
-        const itemsRes = await client.query(`SELECT si.product_id, si.quantity, p.name, p.category, p.price_usd FROM sale_items si JOIN products p ON si.product_id = p.id WHERE si.sale_id = $1 AND si.empresa_id = $2`, [saleId, empresaId]);
+        // 🚨 SAAS: Obtenemos el is_service real de la tabla products
+        const itemsRes = await client.query(`
+            SELECT si.product_id, si.quantity, p.name, p.category, p.price_usd, p.is_service 
+            FROM sale_items si 
+            JOIN products p ON si.product_id = p.id 
+            WHERE si.sale_id = $1 AND si.empresa_id = $2
+        `, [saleId, empresaId]);
         
         for (const item of itemsRes.rows) {
-            const isService = item.name.toUpperCase().includes('AVANCE') || item.category === 'SERVICIOS' || item.product_id.toString().startsWith('ADV');
+            // 🔥 BLINDAJE CERTIFICADO: Identificación exacta de servicios
+            const isService = item.is_service === true || 
+                              (item.name && item.name.toUpperCase().includes('AVANCE')) || 
+                              (item.category && item.category.toUpperCase() === 'SERVICIOS') || 
+                              item.product_id.toString().startsWith('ADV');
+
+            // Solo reingresamos stock y Kardex si NO es un servicio
             if (!isService) {
                 await client.query('SELECT id FROM products WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [item.product_id, empresaId]); 
                 
-                // 🚨 SAAS: Validamos lote por empresa
                 const targetBatch = await client.query(`SELECT id FROM product_batches WHERE product_id = $1 AND empresa_id = $2 ORDER BY expiration_date DESC NULLS FIRST LIMIT 1 FOR UPDATE`, [item.product_id, empresaId]);
                 if (targetBatch.rows.length > 0) {
                     await client.query('UPDATE product_batches SET stock = stock + $1 WHERE id = $2 AND empresa_id = $3', [item.quantity, targetBatch.rows[0].id, empresaId]);
@@ -459,9 +476,10 @@ const voidSale = async (saleId, payloadData, empresaId) => {
         let finalNcNumber = creditNoteNumber;
         let finalNcControl = creditNoteControl;
 
-        if (!finalNcNumber && invoiceType === 'FORMA_LIBRE') {
-            
-            // 🚀 FASE 2: UPSERT Atómico para NOTA DE CRÉDITO
+        // 🟢 FLEXIBILIDAD EN ANULACIONES A CONSUMIDOR FINAL
+        const isConsumidorFinal = !customerIdNumber || customerIdNumber === 'S/I' || customerIdNumber.includes('00000000');
+
+        if (!finalNcNumber && invoiceType === 'FORMA_LIBRE' && !isConsumidorFinal) {
             const cajaRes = await client.query("SELECT serie FROM cash_registers WHERE id = $1 AND empresa_id = $2", [originalRegisterId, empresaId]);
             const serie = cajaRes.rows.length > 0 ? cajaRes.rows[0].serie : 'A';
             const defaultPrefix = `NC-${serie}`;

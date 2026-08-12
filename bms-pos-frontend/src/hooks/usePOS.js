@@ -774,6 +774,7 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
         const isInternalDoc = !isFiscalPrinter && !isFormaLibre;
 
         // BLINDAJE 1 (SENIAT): BLOQUEO DE CONSUMIDOR FINAL PARA NOTAS DE CR\u00C9DITO
+        /* ?? BLOQUE COMENTADO PARA PERMITIR ANULAR A CLIENTE GENÉRICO TEMPORALMENTE 
         if ((isFiscalPrinter || isFormaLibre) && (!sale.id_number || sale.id_number.includes('00000000') || sale.id_number === 'S/I')) {
             return Swal.fire({
                 icon: 'error',
@@ -783,6 +784,7 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                 buttonsStyling: false
             });
         }
+        */
 
         // AUTODETECCI\u00D3N DEL M\u00C9TODO DE PAGO ORIGINAL
         let detectedMethod = '';
