@@ -1104,6 +1104,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
     // =====================================================================
     // 🛡️ PUNTOS 1, 2, 3 y 4 APLICADOS AQUÍ PARA EL TICKET PEQUEÑO
     const ticketPaperSize = configFiscalBrand.printerPaperSize || brand.printerPaperSize || '80mm';
+    const is58mm = ticketPaperSize === '58mm';
     const finalCompanyName = brand.companyName || brand.tradeName || 'EMPRESA NO DEFINIDA';
     const finalCompanyDocument = brand.companyDocument || 'J-00000000-0';
     const finalCompanyAddress = brand.companyAddress || 'Venezuela';
@@ -1121,12 +1122,39 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
     <title>Ticket ${saleId}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
-        @page { size: ${ticketPaperSize} auto; margin: 0; }
-        body { 
-            width: ${ticketPaperSize === '58mm' ? '48mm' : '72mm'}; margin: 0 auto; padding: 5px 0;
-            font-family: 'Roboto', sans-serif; font-size: 10px; line-height: 1.2;
-            color: #000; background: #fff; text-transform: uppercase;
+        
+        /* 🚨 BLINDAJE CSS: DISEÑO UX EN PANTALLA Y CORRECCIÓN DE CORTE EN PAPEL */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        @page { 
+            margin: 0; 
+            size: ${ticketPaperSize} auto;
         }
+        
+        /* ESTILO PARA LA PANTALLA (MODAL) */
+        html, body { 
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center; /* Centra el ticket en la pantalla del monitor */
+            align-items: flex-start;
+            width: 100%;
+            min-height: 100vh;
+            padding: 10px 0;
+            font-family: 'Roboto', sans-serif; 
+        }
+        
+        .ticket-wrapper {
+            background-color: #ffffff;
+            width: ${is58mm ? '52mm' : '76mm'}; 
+            padding: ${is58mm ? '10px' : '15px'};
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            font-size: ${is58mm ? '8.5px' : '10px'}; 
+            line-height: 1.2;
+            color: #000; 
+            text-transform: uppercase;
+            overflow: hidden;
+        }
+        
         .nums { font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
@@ -1135,121 +1163,167 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
         .black { font-weight: 900; }
         .divider { border-bottom: 1px dashed #000; margin: 4px 0; width: 100%; }
         .divider-bold { border-bottom: 2px solid #000; margin: 6px 0; width: 100%; }
-        .header-title { font-size: 14px; margin-bottom: 2px; }
-        .header-meta { font-size: 9px; }
-        .doc-type { margin-top: 6px; font-size: 12px; background: #000; color: #fff; padding: 3px 0; border-radius: 2px; }
-        .warning-box { margin-top: 4px; font-size: 10px; font-weight: 900; border: 2px solid #000; padding: 3px; text-align: center; background: #fff; color: #000; }
-        .client-grid { display: flex; flex-wrap: wrap; margin-top: 5px; gap: 2px; }
-        .client-row { display: flex; width: 100%; justify-content: space-between; font-size: 9px; }
-        .label { font-weight: 700; margin-right: 4px; }
-        .val { flex: 1; overflow: hidden; white-space: nowrap; text-align: right; }
-        .item-container { margin: 5px 0; }
-        .item-header { display: flex; font-size: 8px; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px; font-weight: 700; }
-        .item-row { display: flex; margin-bottom: 3px; align-items: flex-start; font-size: 9px; }
-        .col-qty { width: 12%; text-align: left; }
-        .col-desc { width: 63%; padding-right: 5px; line-height: 1.1; }
-        .col-price { width: 25%; text-align: right; font-weight: 700; }
-        .totals-area { display: flex; flex-direction: column; align-items: flex-end; margin-top: 5px; }
-        .total-row { display: flex; justify-content: space-between; width: 100%; margin-bottom: 2px; font-size: 9px;}
-        .total-val { font-weight: 700; }
-        .final-total { font-size: 14px; margin-top: 4px; padding-top: 4px; border-top: 2px solid #000; width: 100%; display: flex; justify-content: space-between; align-items: center; }
-        .ref-total { font-size: 10px; margin-top: 2px; text-align: right; width: 100%; }
-        .legal-box { font-size: 8px; text-transform: none; margin-top: 8px; line-height: 1.1; }
-        .watermark { position: fixed; top: 35%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 48px; color: rgba(0, 0, 0, 0.1); border: 4px solid rgba(0, 0, 0, 0.1); padding: 10px; z-index: 999; font-weight: 900; pointer-events: none; }
+        
+        /* Ajuste de fuentes para evitar desbordes */
+        .header-title { font-size: ${is58mm ? '13px' : '14px'}; margin-bottom: 2px; text-align: center; }
+        .header-meta { font-size: ${is58mm ? '8.5px' : '9px'}; text-align: center; }
+        
+        /* 🚨 CORRECCIÓN UX PANTALLA: Rectángulo negro con texto blanco */
+        .doc-type { margin-top: 6px; margin-bottom: 2px; font-size: ${is58mm ? '12px' : '14px'}; font-weight: 900; background: #000; color: #fff; text-align: center; letter-spacing: 0.5px; padding: 4px 0; border: 2px solid #000; }
+        
+        .warning-box { margin-top: 2px; font-size: ${is58mm ? '9px' : '10px'}; font-weight: 900; border: 2px solid #000; padding: 3px; text-align: center; }
+        
+        .client-grid { display: flex; flex-direction: column; margin-top: 5px; gap: 2px; width: 100%; }
+        .client-row { display: flex; width: 100%; justify-content: space-between; font-size: ${is58mm ? '8.5px' : '9px'}; }
+        .label { font-weight: 700; margin-right: 2px; white-space: nowrap; }
+        .val { flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        /* Sistema de columnas blindado */
+        .item-container { margin: 6px 0; width: 100%; }
+        .item-header { display: flex; width: 100%; font-size: ${is58mm ? '7.5px' : '8px'}; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px; font-weight: 700; }
+        .item-row { display: flex; width: 100%; margin-bottom: 3px; align-items: flex-start; font-size: ${is58mm ? '8.5px' : '9px'}; }
+        
+        .col-qty { width: 12%; text-align: left; flex-shrink: 0; }
+        .col-desc { width: 56%; padding-right: 3px; line-height: 1.1; word-break: break-word; }
+        .col-price { width: 32%; text-align: right; font-weight: 700; flex-shrink: 0; }
+        
+        .totals-area { display: flex; flex-direction: column; align-items: flex-end; margin-top: 5px; width: 100%; }
+        .total-row { display: flex; justify-content: space-between; width: 100%; margin-bottom: 2px; font-size: ${is58mm ? '8.5px' : '9px'};}
+        .total-val { font-weight: 700; text-align: right; }
+        .final-total { font-size: ${is58mm ? '13px' : '14px'}; margin-top: 4px; padding-top: 4px; border-top: 2px solid #000; width: 100%; display: flex; justify-content: space-between; align-items: center; }
+        .ref-total { font-size: ${is58mm ? '9.5px' : '10px'}; margin-top: 2px; text-align: right; width: 100%; }
+        .legal-box { font-size: ${is58mm ? '8px' : '8px'}; text-transform: none; margin-top: 8px; line-height: 1.1; text-align: justify; }
+        
+        .watermark { position: fixed; top: 35%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 32px; color: rgba(0, 0, 0, 0.1); border: 4px solid rgba(0, 0, 0, 0.1); padding: 5px; z-index: 999; font-weight: 900; pointer-events: none; }
+        
+        /* 🚨 REGLAS ESTRICTAS PARA LA IMPRESORA TÉRMICA (PAPEL FÍSICO) */
+        @media print {
+            html, body { 
+                background-color: #ffffff !important; 
+                display: block !important; /* Elimina el centrado de flexbox */
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+            .ticket-wrapper {
+                box-shadow: none !important;
+                
+                /* Ancho seguro para 58mm */
+                width: ${is58mm ? '48mm' : '72mm'} !important; 
+                max-width: ${is58mm ? '48mm' : '72mm'} !important;
+                
+                margin: 0 !important; 
+                
+                /* 🚨 EL SECRETO DEL CENTRADO FÍSICO: Empujamos 5mm a la derecha desde adentro */
+                padding: 0 1mm 0 5mm !important; 
+            }
+            
+            /* 🚨 MAGIA UX: Invertimos los colores solo al imprimir para que la térmica no falle */
+            .doc-type {
+                background-color: #fff !important;
+                color: #000 !important;
+                border: 2px solid #000 !important;
+            }
+            
+            .no-print { display: none; }
+        }
     </style>
 </head>
 <body>
-    ${isVoided ? '<div class="watermark">ANULADO</div>' : ''}
+    <div class="ticket-wrapper">
+        ${isVoided ? '<div class="watermark">ANULADO</div>' : ''}
 
-    <div class="text-center">
-        <div class="header-title black">${finalCompanyName}</div>
-        <div class="header-meta bold">RIF: ${finalCompanyDocument}</div>
-        <div class="header-meta" style="text-transform: none;">${finalCompanyAddress}</div>
-        ${finalCompanyPhone ? `<div class="header-meta">Tel: ${finalCompanyPhone}</div>` : ''}
-        
-        <div class="doc-type bold text-center">${docTitle}</div>
-        ${noFiscalWarning}
-    </div>
-
-    <div class="client-grid">
-        <div class="client-row"><span class="label">RAZÓN SOCIAL:</span><span class="val">${clientName}</span></div>
-        <div class="client-row"><span class="label">CI/RIF:</span><span class="val nums">${clientId}</span></div>
-        ${clientDir ? `<div class="client-row"><span class="label">DIR:</span><span class="val" style="font-size:8px;">${clientDir.substring(0, 30)}</span></div>` : ''}
-        <div class="divider"></div>
-        <div class="client-row">
-            <span class="label">${isFiscal ? 'FACTURA NRO:' : 'DOCUMENTO NRO:'}</span><span class="val nums bold">${saleId.toString().padStart(8, '0')}</span>
+        <div class="text-center">
+            <div class="header-title black">${finalCompanyName}</div>
+            <div class="header-meta bold">RIF: ${finalCompanyDocument}</div>
+            <div class="header-meta" style="text-transform: none;">${finalCompanyAddress}</div>
+            ${finalCompanyPhone ? `<div class="header-meta">Tel: ${finalCompanyPhone}</div>` : ''}
+            
+            <div class="doc-type bold">${docTitle}</div>
+            ${noFiscalWarning}
         </div>
-        <div class="client-row">
-            <span class="label">FECHA:</span><span class="val nums">${dateStr}</span>
+
+        <div class="client-grid">
+            <div class="client-row"><span class="label">RAZÓN SOCIAL:</span><span class="val">${clientName}</span></div>
+            <div class="client-row"><span class="label">CI/RIF:</span><span class="val nums">${clientId}</span></div>
+            ${clientDir ? `<div class="client-row"><span class="label">DIR:</span><span class="val" style="font-size:${is58mm ? '8px' : '8px'}; white-space: normal; text-align: right;">${clientDir.substring(0, 40)}</span></div>` : ''}
+            <div class="divider"></div>
+            <div class="client-row">
+                <span class="label">${isFiscal ? 'FACTURA NRO:' : 'DOCUMENTO NRO:'}</span><span class="val nums bold">${saleId.toString().padStart(8, '0')}</span>
+            </div>
+            <div class="client-row">
+                <span class="label">FECHA:</span><span class="val nums">${dateStr}</span>
+            </div>
         </div>
-    </div>
 
-    <div class="divider-bold"></div>
+        <div class="divider-bold"></div>
 
-    <div class="item-container">
-        <div class="item-header">
-            <div class="col-qty">CANT</div>
-            <div class="col-desc">DESCRIPCIÓN</div>
-            <div class="col-price">TOTAL</div>
+        <div class="item-container">
+            <div class="item-header">
+                <div class="col-qty">CANT</div>
+                <div class="col-desc">DESCRIPCIÓN</div>
+                <div class="col-price">TOTAL</div>
+            </div>
+            <div class="nums">
+                ${itemsTicketHTML}
+            </div>
         </div>
-        <div class="nums">
-            ${itemsTicketHTML}
+
+        <div class="divider-bold"></div>
+
+        <div class="totals-area nums">
+
+            ${discountUsd > 0 ? `
+            <div class="total-row" style="margin-bottom: 5px; color: #555;">
+                <span class="label">SUBTOTAL BRUTO:</span>
+                <span class="total-val">${formatBs(rawTotalBsExento + rawTotalBsBase)}</span>
+            </div>
+            <div class="total-row" style="margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 3px;">
+                <span class="label">(-) DESCUENTO:</span>
+                <span class="total-val">-${formatBs(discountBs)}</span>
+            </div>
+            ` : ''}
+
+            <div class="total-row"><span class="label">EXENTO:</span><span class="total-val">${formatBs(totalBsExento)}</span></div>
+            <div class="total-row"><span class="label">BASE IMP:</span><span class="total-val">${formatBs(totalBsBase)}</span></div>
+            <div class="total-row"><span class="label">${taxName} (${(ivaRate * 100).toFixed(0)}%):</span><span class="total-val">${formatBs(ivaBs)}</span></div>
+            
+            ${igtfUsd > 0 ? `
+            <div class="total-row" style="margin-top: 3px; border-top: 1px dashed #000; padding-top: 3px;">
+                <span class="label">IGTF (${(igtfRateAmount * 100).toFixed(0)}% s/Div):</span>
+                <span class="total-val">${formatBs(igtfBs)}</span>
+            </div>
+            ` : ''}
+
+            <div class="final-total">
+                <span class="black">TOTAL ${primaryCurrency}</span>
+                <span class="black">${formatBs(totalGeneralBs)}</span>
+            </div>
+            <div class="ref-total bold">${secondaryCurrency}: $${totalGeneralRef.toFixed(2)}</div>
+            <div class="ref-total">Tasa BCV: Bs ${rate.toFixed(2)}</div>
+            
+            ${igtfUsd > 0 ? `<div class="ref-total" style="color: #555;">(Incluye IGTF Ref ${igtfUsd.toFixed(2)})</div>` : ''}
         </div>
-    </div>
 
-    <div class="divider-bold"></div>
-
-    <div class="totals-area nums">
-
-        ${discountUsd > 0 ? `
-        <div class="total-row" style="margin-bottom: 5px; color: #555;">
-            <span class="label">SUBTOTAL BRUTO:</span>
-            <span class="total-val">${formatBs(rawTotalBsExento + rawTotalBsBase)}</span>
+        <div style="margin-top: 6px; border-top: 1px dashed #000; padding-top: 4px;">
+            <div class="bold" style="font-size: ${is58mm ? '9px' : '10px'};">MÉTODO DE PAGO:</div>
+            <div style="font-size: ${is58mm ? '10px' : '11px'}; margin-top: 2px;" class="bold">
+                ${paymentMethod}
+            </div>
         </div>
-        <div class="total-row" style="margin-bottom: 5px; color: #d97706; border-bottom: 1px dashed #d97706; padding-bottom: 3px;">
-            <span class="label">(-) DESCUENTO GLOBAL:</span>
-            <span class="total-val">-${formatBs(discountBs)}</span>
+
+        ${isCredit ? '<div class="text-center black warning-box">VENTA A CRÉDITO - POR PAGAR</div>' : ''}
+
+        <div class="legal-box">
+            ${receiptSecondary}
+            ${hasAdvanceGlobal ? '<br/><br/><strong>* AVANCE EFECTIVO:</strong> Declaro recibir a mi satisfacción el monto detallado como "ENTREGA DE EFECTIVO", operación no sujeta a venta.' : ''}
         </div>
-        ` : ''}
 
-        <div class="total-row"><span class="label">EXENTO:</span><span class="total-val">${formatBs(totalBsExento)}</span></div>
-        <div class="total-row"><span class="label">BASE IMPONIBLE:</span><span class="total-val">${formatBs(totalBsBase)}</span></div>
-        <div class="total-row"><span class="label">${taxName} (${(ivaRate * 100).toFixed(0)}%):</span><span class="total-val">${formatBs(ivaBs)}</span></div>
-        
-        ${igtfUsd > 0 ? `
-        <div class="total-row" style="margin-top: 3px; border-top: 1px dashed #000; padding-top: 3px;">
-            <span class="label">IGTF (${(igtfRateAmount * 100).toFixed(0)}% s/Divisas):</span>
-            <span class="total-val">${formatBs(igtfBs)}</span>
+        <div class="text-center" style="font-size:${is58mm ? '9px' : '10px'}; margin-top:10px; font-weight: bold; padding-bottom: 20px;">
+            ${receiptFooter}
+            <br/><br/>.
         </div>
-        ` : ''}
-
-        <div class="final-total">
-            <span class="black">TOTAL ${primaryCurrency}</span>
-            <span class="black">${formatBs(totalGeneralBs)}</span>
-        </div>
-        <div class="ref-total bold">${secondaryCurrency}: $${totalGeneralRef.toFixed(2)}</div>
-        <div class="ref-total" style="font-size:8px;">Tasa de Cambio BCV: Bs ${rate.toFixed(2)}</div>
-        
-        ${igtfUsd > 0 ? `<div class="ref-total" style="font-size:8px; color: #555;">(Incluye IGTF Perceptivo Ref ${igtfUsd.toFixed(2)})</div>` : ''}
-    </div>
-
-    <div style="margin-top: 6px; border-top: 1px dashed #000; padding-top: 4px;">
-        <div class="bold" style="font-size: 8px;">MÉTODO DE PAGO:</div>
-        <div style="font-size: 9px; line-height: 1.1; margin-top: 2px;" class="bold">
-            ${paymentMethod}
-        </div>
-    </div>
-
-    ${isCredit ? '<div class="text-center black" style="margin-top:8px; padding:4px; border:2px solid #000;">VENTA A CRÉDITO - POR PAGAR</div>' : ''}
-
-    <div class="legal-box text-justify">
-        ${receiptSecondary}
-        ${hasAdvanceGlobal ? '<br/><br/><strong>* AVANCE EFECTIVO:</strong> Declaro recibir a mi satisfacción el monto en efectivo detallado como "ENTREGA DE EFECTIVO", operación no sujeta a venta.' : ''}
-    </div>
-
-    <div class="text-center" style="font-size:8px; margin-top:10px; font-weight: bold;">
-        ${receiptFooter}
-    </div>
+    </div> <!-- FIN TICKET WRAPPER -->
 </body>
 </html>
 `;
