@@ -121,7 +121,10 @@ export const DailySalesModal = ({
                                                     <span className={`font-bold text-xs sm:text-sm truncate max-w-[120px] sm:max-w-[200px] ${isVoid ? 'text-slate-500 line-through' : 'text-slate-700 group-hover:text-indigo-700'}`} title={sale.full_name}>
                                                         {sale.full_name || 'Consumidor Final'}
                                                     </span>
-                                                    <span className="text-[9px] sm:text-[10px] font-mono text-slate-400">#{sale.id}</span>
+                                                    {/* 🚀 FIX UX: SECUENCIA AISLADA DE VENTAS (UX PRO) */}
+                                                    <span className="text-[9px] sm:text-[10px] font-mono text-slate-400">
+                                                        #{sale.correlativo_interno || sale.control_number || sale.id}
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="px-3 sm:px-5 py-3 sm:py-4 text-center">

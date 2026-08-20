@@ -204,9 +204,12 @@ export const DashboardView = ({
                                         onClick={() => showSaleDetail(sale)} 
                                         className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
                                     >
+                                        {/* 🚀 FIX UX: SECUENCIA AISLADA DE VENTAS (UX PRO) */}
                                         <td className="px-5 py-3 align-middle">
                                             <div className="flex flex-col items-start gap-1">
-                                                <span className="font-black text-slate-400 text-xs leading-none">#{sale.id}</span>
+                                                <span className="font-black text-slate-400 text-xs leading-none">
+                                                    #{sale.correlativo_interno || sale.control_number || sale.id}
+                                                </span>
                                                 <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-[4px] border backdrop-blur-sm transition-all ${
                                                     isFiscal ? 'bg-indigo-50/80 text-indigo-600 border-indigo-200/50' : 'bg-slate-100 text-slate-400 border-slate-200/50'
                                                 }`}>

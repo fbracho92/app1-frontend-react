@@ -113,20 +113,30 @@ const getDailyReport = async (registerId, empresaId) => { // 🚨 SAAS
 // 2. ÚLTIMAS VENTAS
 const getRecentSales = async (registerId, empresaId) => {
     let params = [empresaId]; // 🚨 SAAS
+    
+    // 🚀 FIX APLICADO: Secuencia Dinámica Aislada por Inquilino (UX PRO)
+    // Usamos ROW_NUMBER() para crear una secuencia perfecta en memoria
     let queryText = `
-        SELECT s.id, s.total_usd, s.total_ves, s.payment_method, 
+        WITH TenantSales AS (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY empresa_id ORDER BY created_at ASC) as correlativo_interno
+            FROM sales
+            WHERE empresa_id = $1
+        )
+        SELECT s.id, s.correlativo_interno, s.total_usd, s.total_ves, s.payment_method, 
             to_char(s.created_at, 'DD/MM/YYYY HH12:MI AM') as full_date, 
-            s.status, s.invoice_type, c.full_name, c.id_number, s.discount_usd
-        FROM sales s 
+            s.status, s.invoice_type, c.full_name, c.id_number, s.discount_usd, s.control_number
+        FROM TenantSales s 
         LEFT JOIN customers c ON s.customer_id = c.id 
-        WHERE s.empresa_id = $1
+        WHERE 1=1
     `;
     
     if (registerId && registerId !== -1) {
         params.push(registerId); // 🚨 SAAS
         queryText += ` AND s.register_id = $2 `;
     }
-    queryText += ` ORDER BY s.id DESC LIMIT 10`;
+    
+    // IMPORTANTE: Ordenamos por created_at para asegurar la cronología exacta
+    queryText += ` ORDER BY s.created_at DESC LIMIT 10`;
 
     const result = await pool.query(queryText, params);
     return result.rows;
@@ -157,21 +167,30 @@ const getLowStock = async (empresaId) => { // 🚨 SAAS
 // 4. VENTAS DE HOY
 const getSalesToday = async (registerId, empresaId) => { // 🚨 SAAS
     let params = [empresaId];
+    
+    // 🚀 FIX APLICADO: Secuencia Dinámica Aislada por Inquilino (UX PRO)
+    // Usamos ROW_NUMBER() para crear una secuencia perfecta en memoria
     let queryText = `
-        SELECT s.id, s.created_at, s.total_usd, s.amount_paid_usd, 
+        WITH TenantSales AS (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY empresa_id ORDER BY created_at ASC) as correlativo_interno
+            FROM sales
+            WHERE empresa_id = $1
+        )
+        SELECT s.id, s.correlativo_interno, s.created_at, s.total_usd, s.amount_paid_usd, 
             (s.total_usd - s.amount_paid_usd) as debt, s.total_ves, 
-            s.payment_method, s.status, c.full_name, s.discount_usd
-        FROM sales s
+            s.payment_method, s.status, c.full_name, s.discount_usd, s.control_number
+        FROM TenantSales s
         LEFT JOIN customers c ON s.customer_id = c.id
         WHERE DATE(s.created_at AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')
-        AND s.empresa_id = $1
     `;
     
     if (registerId && registerId !== -1) {
         params.push(registerId);
         queryText += ` AND s.register_id = $2 `;
     }
-    queryText += ` ORDER BY s.id DESC`;
+    
+    // IMPORTANTE: Ordenamos por created_at para asegurar la cronología exacta
+    queryText += ` ORDER BY s.created_at DESC`;
 
     const result = await pool.query(queryText, params);
     return result.rows;
@@ -287,8 +306,15 @@ const getSalesDetail = async (startDate, endDate, search, registerId, empresaId)
     const queryParams = [startDate, finalEndDateString, empresaId]; // 🚨 SAAS: Inyectado
     let paramCount = 3;
     
+    // 🚀 FIX APLICADO: Secuencia Dinámica Aislada por Inquilino (UX PRO)
+    // El ROW_NUMBER se calcula sobre TODA la historia de la empresa ($3) ANTES de filtrar por fecha.
     let queryText = `
-        SELECT s.id, s.created_at, COALESCE(c.full_name, 'Consumidor Final') as client_name,
+        WITH TenantSales AS (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY empresa_id ORDER BY created_at ASC) as correlativo_interno
+            FROM sales
+            WHERE empresa_id = $3
+        )
+        SELECT s.id, s.correlativo_interno, s.created_at, COALESCE(c.full_name, 'Consumidor Final') as client_name,
             COALESCE(c.id_number, 'N/A') as client_id, s.payment_method, s.status, s.invoice_type, 
             s.total_usd, s.total_ves, s.bcv_rate_snapshot,
             s.fiscal_invoice_number, s.fiscal_control_number, s.credit_note_number, s.credit_note_control, s.control_number,
@@ -296,11 +322,10 @@ const getSalesDetail = async (startDate, endDate, search, registerId, empresaId)
             (SELECT STRING_AGG(CONCAT(p.name, ' (', si.quantity, ')'), ', ') 
              FROM sale_items si JOIN products p ON si.product_id = p.id 
              WHERE si.sale_id = s.id) as items_comprados
-        FROM sales s
+        FROM TenantSales s
         LEFT JOIN customers c ON s.customer_id = c.id
         LEFT JOIN cash_registers cr ON s.register_id = cr.id
         WHERE s.created_at BETWEEN $1 AND $2 
-        AND s.empresa_id = $3
     `;
 
     if (registerId && registerId !== -1) {
@@ -311,11 +336,13 @@ const getSalesDetail = async (startDate, endDate, search, registerId, empresaId)
 
     if (search) {
         paramCount++;
-        queryText += ` AND (CAST(s.id AS TEXT) ILIKE $${paramCount} OR c.full_name ILIKE $${paramCount} OR c.id_number ILIKE $${paramCount})`;
+        // 🛡️ BLINDAJE UX: Ahora el buscador encuentra tanto el ID global como el nuevo correlativo interno
+        queryText += ` AND (CAST(s.id AS TEXT) ILIKE $${paramCount} OR CAST(s.correlativo_interno AS TEXT) ILIKE $${paramCount} OR c.full_name ILIKE $${paramCount} OR c.id_number ILIKE $${paramCount})`;
         queryParams.push(`%${search}%`);
     }
     
-    queryText += ` ORDER BY s.id DESC`;
+    // IMPORTANTE: Ordenamos por created_at para mantener la cronología exacta
+    queryText += ` ORDER BY s.created_at DESC`;
 
     const result = await pool.query(queryText, queryParams);
     return result.rows;

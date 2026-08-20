@@ -406,7 +406,8 @@ export const AdvancedReportsView = memo(({
                                                 const docSerie = extractedSerie ? `SERIE - ${extractedSerie}` : "S/S"; 
                                                 
                                                 // 🛡️ SE MANTIENEN TODOS LOS FALLBACKS HISTÓRICOS INTACTOS
-                                                const baseDocNum = sale.fiscal_invoice_number || sale.control_number || sale["Nro Factura"] || sale.id;
+                                                // 🚀 AÑADIMOS EL CORRELATIVO INTERNO PARA MANTENER LA SECUENCIA PERFECTA Y AISLADA
+                                                const baseDocNum = sale.fiscal_invoice_number || sale.correlativo_interno || sale.control_number || sale["Nro Factura"] || sale.id;
 
                                                 // La Formato Libre exige la Serie concatenada con el número rellenado con ceros
                                                 const finalFiscalDisplay = isFormaLibreDoc ? `${docSerie} ${String(baseDocNum).replace(/[^0-9]/g, '').padStart(8, '0')}` : baseDocNum;
