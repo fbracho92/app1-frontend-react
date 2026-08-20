@@ -721,7 +721,8 @@ function MainApp({ user, handleLogout }) {
         const finalDate = createdAt ? new Date(createdAt) : new Date();
         return DocGen.generateReceiptHTML(saleId, customer, items, invoiceType, saleStatus, finalDate, totalSaleUsd, historicalRate, paymentMethod, bcvRate, igtfUsd, discountUsd);
     };
-    const printClosingReport = (shift) => DocGen.printClosingReport(shift);
+    // 🚀 INYECCIÓN DINÁMICA DE MARCA BLANCA EN REPORTE DE CIERRE
+    const printClosingReport = (shift) => DocGen.printClosingReport(shift, user?.identity || tenantBrand);
     const exportReportToPDF = () => DocGen.exportReportToPDF(analyticsData, reportDateRange);
     // =========================================================================
 

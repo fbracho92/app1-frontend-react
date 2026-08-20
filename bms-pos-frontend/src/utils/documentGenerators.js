@@ -1330,21 +1330,26 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
 };
 
 // --- FUNCIÓN REPORTE PDF (UX PREMIUM MARCA BLANCA) ---
-export const printClosingReport = (shift) => {
+export const printClosingReport = (shift, tenantIdentity = null) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
 
+    // 🚀 EXTRACCIÓN DINÁMICA DE MARCA BLANCA (Con Fallbacks de Seguridad)
+    const companyName = tenantIdentity?.companyName || tenantIdentity?.tradeName || tenantConfig.companyName || 'EMPRESA';
+    const companyDoc = tenantIdentity?.companyDocument || tenantConfig.companyDocument || 'J-00000000-0';
+    const companyAddress = tenantIdentity?.companyAddress || tenantConfig.companyAddress || 'Venezuela';
+
     // --- 🏢 DATOS FISCALES DINÁMICOS ---
     const FISCAL_INFO = {
-        name: tenantConfig.companyName,
-        rif: tenantConfig.companyDocument,
-        address: tenantConfig.companyAddress,
+        name: companyName,
+        rif: companyDoc,
+        address: companyAddress,
         providencia: "Providencia Administrativa SNAT/2024/00012"
     };
 
     const colors = {
-        header: [15, 23, 42],    
+        header: [15, 23, 42],  
         textHeader: [255, 255, 255],
         textDark: [30, 41, 59],  
         textLight: [100, 116, 139], 
@@ -1401,7 +1406,7 @@ export const printClosingReport = (shift) => {
         doc.text(label, 14, y);
 
         const prefix = isDeduction ? '-' : '';
-        doc.text(`${prefix}${tenantConfig.primaryCurrency} ${vesVal.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, xValVes, y, { align: 'right' });
+        doc.text(`${prefix}${tenantConfig.primaryCurrency || 'Bs'} ${vesVal.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, xValVes, y, { align: 'right' });
         doc.text(`${prefix}$${usdVal.toFixed(2)}`, xValUsd, y, { align: 'right' });
 
         y += 7;
@@ -1460,14 +1465,14 @@ export const printClosingReport = (shift) => {
         doc.text(label, 18, y);
 
         doc.setFont('helvetica', 'normal');
-        doc.text(`${tenantConfig.primaryCurrency} ${sysBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 90, y, { align: 'right' });
+        doc.text(`${tenantConfig.primaryCurrency || 'Bs'} ${sysBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 90, y, { align: 'right' });
         doc.setTextColor(...colors.textLight);
         doc.setFontSize(8);
         doc.text(`Ref ${sysRef.toFixed(2)}`, 90, y + 4, { align: 'right' });
 
         doc.setFontSize(9);
         doc.setTextColor(...colors.textDark);
-        doc.text(`${tenantConfig.primaryCurrency} ${realBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 140, y, { align: 'right' });
+        doc.text(`${tenantConfig.primaryCurrency || 'Bs'} ${realBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 140, y, { align: 'right' });
         doc.setTextColor(...colors.textLight);
         doc.setFontSize(8);
         doc.text(`Ref ${realRef.toFixed(2)}`, 140, y + 4, { align: 'right' });
@@ -1476,7 +1481,7 @@ export const printClosingReport = (shift) => {
         doc.setFont('helvetica', 'bold');
         if (Math.abs(diffBs) < 1) doc.setTextColor(22, 163, 74);
         else doc.setTextColor(220, 38, 38);
-        doc.text(`${tenantConfig.primaryCurrency} ${diffBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 190, y, { align: 'right' });
+        doc.text(`${tenantConfig.primaryCurrency || 'Bs'} ${diffBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, 190, y, { align: 'right' });
 
         if (Math.abs(diffRef) < 0.1) doc.setTextColor(22, 163, 74);
         else doc.setTextColor(220, 38, 38);
@@ -1499,7 +1504,7 @@ export const printClosingReport = (shift) => {
     doc.setTextColor(150, 150, 150);
     doc.setFont('helvetica', 'italic');
     doc.text(FISCAL_INFO.providencia, 14, pageHeight - 15);
-    doc.text(`Documento generado por Sistema ${tenantConfig.companyName}`, pageWidth - 14, pageHeight - 15, { align: 'right' });
+    doc.text(`Documento generado por Sistema ${companyName}`, pageWidth - 14, pageHeight - 15, { align: 'right' });
 
     doc.save(`Cierre_Fiscal_${shift.id}.pdf`);
 };
