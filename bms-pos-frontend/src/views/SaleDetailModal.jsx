@@ -24,7 +24,8 @@ export const SaleDetailModal = ({
     const isNotaEntrega = currentInvoiceType === 'NOTA_ENTREGA' || currentInvoiceType === 'TICKET';
     
     // 🚨 CASCADA DE RESPALDOS (FALLBACKS) PARA EL MODAL
-    const numDocLegacy = selectedSaleDetail.control_number || selectedSaleDetail["Nro Factura"] || selectedSaleDetail.id;
+    // 🚀 FIX UX APLICADO: Priorizamos el correlativo interno perfecto
+    const numDocLegacy = selectedSaleDetail.correlativo_interno || selectedSaleDetail.control_number || selectedSaleDetail["Nro Factura"] || selectedSaleDetail.id;
     const numControlLegacy = selectedSaleDetail.fiscal_control_number || selectedSaleDetail["Nro Control"] || 'S/A';
 
     // 🚨 CORRECCIÓN: NC independiente, si no tiene número mostrará S/A (Sin Asignar)
@@ -53,8 +54,11 @@ export const SaleDetailModal = ({
         // Inyectamos la serie correcta
         localStorage.setItem('bms_print_serie', realSerie);
         
-        // Llamamos a tu generador de PDF
-        handlePrintTicket(selectedSaleDetail);
+        // 🚀 FIX UX APLICADO: Forzamos al generador a usar el correlativo perfecto
+        handlePrintTicket({
+            ...selectedSaleDetail,
+            id: selectedSaleDetail.correlativo_interno || selectedSaleDetail.control_number || selectedSaleDetail.id
+        });
         
         // Borramos la variable a los 3 segundos para que no interfiera en futuras impresiones
         setTimeout(() => {

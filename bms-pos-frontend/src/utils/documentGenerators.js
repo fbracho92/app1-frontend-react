@@ -1018,10 +1018,13 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
             // 🛡️ BLINDAJE DE FORMATO: Si solo nos dio una letra (Ej: "B"), lo convertimos a "SERIE - B"
             const formattedSerie = docSerie.length === 1 ? `SERIE - ${docSerie.toUpperCase()}` : docSerie;
 
+            // 🚀 FIX UX APLICADO: Extraemos solo los números de forma segura
+            const cleanFormaLibreNum = String(saleId).replace(/[^0-9]/g, '');
+
             // 3. Armado Final Inteligente
             let finalInvoiceString = (fiscalControlNumber && fiscalControlNumber.includes('SERIE')) 
                 ? fiscalControlNumber // Si ya trae el formato completo desde la base de datos
-                : `${formattedSerie} ${saleId.toString().padStart(8, '0')}`;;
+                : `${formattedSerie} ${cleanFormaLibreNum.padStart(8, '0')}`;
                 
                 
         return `
@@ -1114,12 +1117,16 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
     const receiptSecondary = configFiscalBrand.receiptSecondaryMessage || brand.receiptSecondaryMessage || 'Recibí conforme mercancía y servicios.';
     const receiptFooter = configFiscalBrand.receiptFooterMessage || brand.receiptFooterMessage || '*** GRACIAS POR SU COMPRA ***';
 
+    // 🚀 FIX UX APLICADO: Extraemos los números exactos enviados desde el frontend (saleId ahora trae el correlativo)
+    const cleanRawNum = String(saleId).replace(/[^0-9]/g, '');
+    const ticketNumber = cleanRawNum.padStart(8, '0');
+
     return `
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Ticket ${saleId}</title>
+    <title>Ticket ${ticketNumber}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
         
@@ -1249,7 +1256,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
             ${clientDir ? `<div class="client-row"><span class="label">DIR:</span><span class="val" style="font-size:${is58mm ? '8px' : '8px'}; white-space: normal; text-align: right;">${clientDir.substring(0, 40)}</span></div>` : ''}
             <div class="divider"></div>
             <div class="client-row">
-                <span class="label">${isFiscal ? 'FACTURA NRO:' : 'DOCUMENTO NRO:'}</span><span class="val nums bold">${saleId.toString().padStart(8, '0')}</span>
+                <span class="label">${isFiscal ? 'FACTURA NRO:' : 'DOCUMENTO NRO:'}</span><span class="val nums bold">${ticketNumber}</span>
             </div>
             <div class="client-row">
                 <span class="label">FECHA:</span><span class="val nums">${dateStr}</span>
@@ -1327,7 +1334,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
 </body>
 </html>
 `;
-};
+    }
 
 // --- FUNCIÓN REPORTE PDF (UX PREMIUM MARCA BLANCA) ---
 export const printClosingReport = (shift, tenantIdentity = null) => {
