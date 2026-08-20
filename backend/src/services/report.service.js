@@ -396,12 +396,25 @@ const getAgedDebt = async (empresaId) => { // 🚨 SAAS
 // 13. HISTORIAL DE CIERRES
 const getClosingsHistory = async (registerId, empresaId) => { // 🚨 SAAS
     let params = [empresaId];
-    let queryText = `SELECT * FROM cash_shifts WHERE empresa_id = $1 `;
     
+    // 🚀 BLINDAJE SAAS: Generamos una secuencia dinámica y perfecta por cada empresa usando ROW_NUMBER()
+    // Añadimos 'WHERE 1=1' en la consulta externa para que la concatenación de filtros sea 100% segura.
+    let queryText = `
+        WITH TenantShifts AS (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY empresa_id ORDER BY opened_at ASC) as correlativo_interno
+            FROM cash_shifts
+            WHERE empresa_id = $1
+        )
+        SELECT * FROM TenantShifts
+        WHERE 1=1 
+    `;
+    
+    // Si el usuario filtra por una caja específica, lo agregamos de forma segura
     if (registerId && registerId !== -1) {
         params.push(registerId);
         queryText += ` AND register_id = $2 `;
     }
+    
     queryText += ` ORDER BY opened_at DESC LIMIT 50`;
     
     const result = await pool.query(queryText, params);

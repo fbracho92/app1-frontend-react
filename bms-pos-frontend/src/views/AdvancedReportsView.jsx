@@ -657,21 +657,32 @@ export const AdvancedReportsView = memo(({
                             <tbody className="divide-y divide-slate-50">
                                 {closingsHistory.map((shift) => (
                                     <tr key={shift.id} className="hover:bg-blue-50/30 transition-colors group">
+                                        {/* 🚀 EL FIX APLICADO: SECUENCIA INDEPENDIENTE Y REPORTE Z LEGAL */}
                                         <td className="px-6 py-5">
-            <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-700 text-lg leading-none">#{shift.id}</span>
-                    {/* 🚀 EL FIX APLICADO: Ocultamos el ID global de la base de datos SaaS para evitar confusiones y usamos una etiqueta UX limpia */}
-                    <span className="bg-slate-200/50 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest leading-none">
-                        ESTACIÓN POS
-                    </span>
-                </div>
-                {shift.status === 'ABIERTA'
-                    ? <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">🟢 ABIERTA</span>
-                    : <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">🔒 CERRADA</span>
-                }
-            </div>
-        </td>
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    {/* Usamos el correlativo interno calculado por la base de datos en lugar del ID global */}
+                                                    <span className="font-black text-slate-700 text-lg leading-none">
+                                                        Turno #{shift.correlativo_interno || shift.id}
+                                                    </span>
+                                                    <span className="bg-slate-200/50 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest leading-none">
+                                                        ESTACIÓN POS
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* ⚖️ ETIQUETA LEGAL: Muestra el Reporte Z de la impresora fiscal si existe */}
+                                                {shift.fiscal_z_report && (
+                                                    <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded w-fit uppercase tracking-widest" title="Número de Control Legal SENIAT">
+                                                        Z-LEGAL: #{shift.fiscal_z_report}
+                                                    </span>
+                                                )}
+
+                                                {shift.status === 'ABIERTA'
+                                                    ? <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">🟢 ABIERTA</span>
+                                                    : <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">🔒 CERRADA</span>
+                                                }
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-5">
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-slate-600 text-xs uppercase">{shift.cashier_name || 'Cajero'}</span>
