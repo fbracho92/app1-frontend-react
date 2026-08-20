@@ -1509,6 +1509,7 @@ export const printClosingReport = (shift, tenantIdentity = null) => {
     doc.save(`Cierre_Fiscal_${shift.id}.pdf`);
 };
 
+
 // --- FUNCIÓN GENERAR REPORTE PDF (DISEÑO MODERNO: MARCA BLANCA) ---
 export const exportReportToPDF = (analyticsData, reportDateRange) => {
     if (!analyticsData || !analyticsData.salesOverTime) {
