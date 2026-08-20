@@ -314,7 +314,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                             exit="exit"
                             className="space-y-4"
                         >
-                            <div className="max-h-[16rem] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                            <div className="max-h-[16rem] md:max-h-[20rem] overflow-y-auto pr-1 sm:pr-2 space-y-3 custom-scrollbar">
                                 {(() => {
                                     const myActiveRegister = registers.find(r => r.shift_status === 'ABIERTA' && r.occupant_id === loggedUser?.id);
                                     
@@ -338,30 +338,33 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                 onClick={() => {
                                                     if (isOccupiedByOther) {
                                                         if (isManager) {
-                                                            // Menú Interactivo Gerencial
+                                                            // 🛡️ MODAL LEGAL DE AUDITORÍA (Diseño limpio y responsive)
                                                             Swal.fire({
-                                                                icon: 'question',
-                                                                title: 'Caja Ocupada',
-                                                                html: `<p class="text-sm text-slate-600">Esta caja está siendo operada por <b>${reg.occupant_name}</b>.</p><p class="text-[11px] font-black text-indigo-600 mt-4 uppercase tracking-widest">¿Qué acción deseas realizar?</p>`,
-                                                                showDenyButton: true,
+                                                                icon: 'warning',
+                                                                title: 'Modo Auditoría Fiscal',
+                                                                html: `
+                                                                    <div class="text-left mt-2">
+                                                                        <p class="text-sm text-slate-600">Estás a punto de entrar a la caja operada por <b>${reg.occupant_name}</b>.</p>
+                                                                        <div class="bg-amber-50 border-l-4 border-amber-500 p-3 mt-3 rounded-r-xl">
+                                                                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">Advertencia Legal</p>
+                                                                            <p class="text-xs text-amber-600 font-medium mt-1">Podrás revisar movimientos y emitir Reportes X/Z, pero no facturar a tu nombre.</p>
+                                                                        </div>
+                                                                    </div>
+                                                                `,
                                                                 showCancelButton: true,
-                                                                confirmButtonText: '👁️ Auditar Caja',
-                                                                denyButtonText: '📊 Ir a Gerencia',
+                                                                confirmButtonText: 'Sí, Auditar Caja',
                                                                 cancelButtonText: 'Cancelar',
                                                                 confirmButtonColor: '#4f46e5',
-                                                                denyButtonColor: '#0f172a',
+                                                                cancelButtonColor: '#e2e8f0',
                                                                 customClass: { 
-                                                                    popup: 'rounded-[2rem]',
-                                                                    actions: 'flex flex-wrap gap-2 w-full justify-center mt-4',
-                                                                    confirmButton: 'bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md outline-none text-xs',
-                                                                    denyButton: 'bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md outline-none text-xs',
-                                                                    cancelButton: 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold py-3 px-4 rounded-xl transition-all outline-none text-xs'
+                                                                    popup: 'rounded-[2rem] w-[90%] sm:w-auto',
+                                                                    confirmButton: 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 px-4 rounded-xl transition-all shadow-lg active:scale-95 outline-none text-xs mt-2',
+                                                                    cancelButton: 'w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 px-4 rounded-xl transition-all outline-none text-xs mt-2',
+                                                                    actions: 'flex flex-col gap-0 w-full px-4'
                                                                 }
                                                             }).then((result) => {
                                                                 if (result.isConfirmed) {
                                                                     handleSelectRegister(reg.id); 
-                                                                } else if (result.isDenied) {
-                                                                    handleSelectRegister(null); 
                                                                 }
                                                             });
                                                         } else {
@@ -371,7 +374,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                                 title: 'Acceso Denegado',
                                                                 text: `La caja está en uso por ${reg.occupant_name}. No tienes permisos para acceder.`,
                                                                 confirmButtonColor: '#e11d48',
-                                                                customClass: { popup: 'rounded-[2rem]' }
+                                                                customClass: { popup: 'rounded-[2rem] w-[90%] sm:w-auto' }
                                                             }).then(() => {
                                                                 localStorage.removeItem('bms_token');
                                                                 localStorage.removeItem('bms_user');
@@ -381,12 +384,13 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                             });
                                                         }
                                                     } else if (isBlockedForMe) {
+                                                        // 🛡️ BLOQUEO CRUZADO: Tiene otra caja abierta
                                                         Swal.fire({
-                                                            icon: 'warning',
-                                                            title: 'Turno Activo',
-                                                            text: 'Ya tienes otra caja abierta. Selecciona tu caja activa para continuar.',
-                                                            confirmButtonColor: '#f59e0b',
-                                                            customClass: { popup: 'rounded-[2rem]' }
+                                                            icon: 'error',
+                                                            title: 'Normativa de Seguridad',
+                                                            text: 'No puedes abrir dos cajas simultáneamente. Termina tu jornada activa en la otra estación.',
+                                                            confirmButtonColor: '#0f172a',
+                                                            customClass: { popup: 'rounded-[2rem] w-[90%] sm:w-auto' }
                                                         });
                                                     } else {
                                                         handleSelectRegister(reg.id);
@@ -404,8 +408,9 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                                 : 'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-400 group hover:shadow-md'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-3 sm:gap-4">
-                                                    <div className={`p-2.5 sm:p-3 rounded-xl transition-colors duration-300 shadow-sm border flex items-center justify-center ${
+                                                {/* 📱 CONTENEDOR IZQUIERDO RESPONSIVE: Uso de min-w-0 y flex-1 para truncar textos en móviles */}
+                                                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                                                    <div className={`p-2.5 sm:p-3 rounded-xl transition-colors duration-300 shadow-sm border flex items-center justify-center shrink-0 ${
                                                         isOpen && isOccupiedByMe
                                                             ? 'bg-blue-100/80 text-blue-600 border-blue-200 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-500' 
                                                             : isOccupiedByOther
@@ -426,27 +431,32 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                             <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3h6m-6 4h6m-6 4h6m-6 4h6M9 21h6" /></svg>
                                                         )}
                                                     </div>
-                                                    <div className="text-left">
-                                                        <div className={`text-[13px] sm:text-sm font-bold transition-colors ${
+                                                    
+                                                    <div className="text-left min-w-0 flex-1 pr-2">
+                                                        <div className={`text-[13px] sm:text-sm font-bold transition-colors truncate w-full ${
                                                             isOpen ? (isOccupiedByOther && isManager ? 'text-indigo-800' : 'text-blue-800') : isBlockedForMe ? 'text-slate-500' : 'text-emerald-800 group-hover:text-emerald-900'
                                                         }`}>
                                                             {reg.name}
                                                         </div>
-                                                        <div className={`text-[9px] sm:text-[10px] font-bold tracking-[0.1em] uppercase mt-0.5 sm:mt-1 flex items-center gap-1.5 ${
+                                                        <div className={`text-[9px] sm:text-[10px] font-bold tracking-[0.1em] uppercase mt-0.5 sm:mt-1 flex items-center gap-1.5 w-full ${
                                                             isOpen ? (isOccupiedByOther && isManager ? 'text-indigo-600' : 'text-blue-600') : isBlockedForMe ? 'text-slate-400' : 'text-emerald-600'
                                                         }`}>
-                                                            {isOpen && <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isOccupiedByOther && isManager ? 'bg-indigo-500' : 'bg-blue-500'}`}></span>}
-                                                            {isOpen 
-                                                                ? (isOccupiedByMe 
-                                                                    ? 'TU TURNO ACTIVO' 
-                                                                    : (isManager ? `AUDITAR CAJA DE: ${reg.occupant_name}` : `OCUPADA POR: ${reg.occupant_name}`)) 
-                                                                : isBlockedForMe
-                                                                    ? 'BLOQUEADA (TIENES TURNO)'
-                                                                    : 'DISPONIBLE'}
+                                                            {isOpen && <span className={`w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${isOccupiedByOther && isManager ? 'bg-indigo-500' : 'bg-blue-500'}`}></span>}
+                                                            <span className="truncate">
+                                                                {isOpen 
+                                                                    ? (isOccupiedByMe 
+                                                                        ? 'TU TURNO ACTIVO' 
+                                                                        : (isManager ? `AUDITAR CAJA DE: ${reg.occupant_name}` : `OCUPADA POR: ${reg.occupant_name}`)) 
+                                                                    : isBlockedForMe
+                                                                        ? 'BLOQUEADA (TIENES TURNO)'
+                                                                        : 'DISPONIBLE'}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <span className={`transition-colors ${
+
+                                                {/* 📱 CONTENEDOR DERECHO: Uso de shrink-0 para que el ícono derecho no se aplaste */}
+                                                <span className={`shrink-0 ml-1 transition-colors ${
                                                     isOpen ? (isOccupiedByOther && isManager ? 'text-indigo-400 group-hover:text-indigo-600' : 'text-blue-400') : isBlockedForMe ? 'text-slate-300' : 'text-emerald-400 group-hover:text-emerald-600'
                                                 }`}>
                                                     {cannotEnter ? (
@@ -462,7 +472,7 @@ export const LoginScreen = ({ onLoginSuccess }) => {
 
                                 {registers.length === 0 && (
                                     <div className="text-center p-6 sm:p-8 bg-white/40 border border-dashed border-slate-300 rounded-[1.25rem] backdrop-blur-sm">
-                                        <div className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white mb-3 border border-slate-200 shadow-sm">
+                                        <div className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white mb-3 border border-slate-200 shadow-sm shrink-0">
                                             <svg className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                         </div>
                                         <p className="text-[10px] sm:text-xs font-semibold text-slate-500">No hay cajas dadas de alta en este terminal.</p>
@@ -473,16 +483,20 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                             {(() => {
                                 const uRole = (loggedUser?.role || '').toUpperCase();
                                 if (uRole === 'ADMINISTRADOR' || uRole === 'SUPERVISOR') {
-                                    return (
-                                        <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} className="pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-200/50">
-                                            <Button 
-                                                onClick={() => handleSelectRegister(null)}
-                                                className="w-full !bg-white/60 hover:!bg-white backdrop-blur-md !text-slate-600 hover:!text-blue-700 border border-white !rounded-[1.15rem] py-3.5 text-[11px] sm:text-xs font-bold tracking-[0.15em] uppercase transition-all shadow-sm focus:outline-none focus:ring-transparent"
-                                            >
-                                                Acceso Directo a Gerencia
-                                            </Button>
-                                        </motion.div>
-                                    );
+                                    // 🚀 LÓGICA DE BLINDAJE: Oculta el botón de gerencia si el admin tiene un turno abierto
+                                    const myActiveRegister = registers.find(r => r.shift_status === 'ABIERTA' && r.occupant_id === loggedUser?.id);
+                                    if (!myActiveRegister) {
+                                        return (
+                                            <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} className="pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-slate-200/50">
+                                                <Button 
+                                                    onClick={() => handleSelectRegister(null)}
+                                                    className="w-full !bg-white/60 hover:!bg-white backdrop-blur-md !text-slate-600 hover:!text-blue-700 border border-white !rounded-[1.15rem] py-3.5 text-[11px] sm:text-xs font-bold tracking-[0.15em] uppercase transition-all shadow-sm focus:outline-none focus:ring-transparent"
+                                                >
+                                                    Acceso Directo a Gerencia
+                                                </Button>
+                                            </motion.div>
+                                        );
+                                    }
                                 }
                                 return null;
                             })()}
