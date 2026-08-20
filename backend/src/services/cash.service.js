@@ -2,29 +2,52 @@
 const pool = require('../config/db');
 const { getRate } = require('../utils/bcvState');
 
-// 1. ABRIR TURNO (Aislado por Estacion y Atado al Usuario)
+// 1. ABRIR TURNO (Blindaje de 3 Capas: Estación, Usuario y Anti-Fantasmas)
 // 🚨 SAAS: Recibimos empresaId
 const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId, empresaId) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        
-        // 🚨 SAAS: Bloqueamos la caja de ESTA empresa
+
+        // Bloqueamos la fila de esta caja específica en la base de datos para evitar doble clic simultáneo
         await client.query('SELECT id FROM cash_registers WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [registerId, empresaId]);
-        
-        // 🚨 SAAS: Verificamos turnos abiertos de ESTA empresa
-        const checkOpen = await client.query("SELECT id FROM cash_shifts WHERE status = 'ABIERTA' AND register_id = $1 AND empresa_id = $2 LIMIT 1", [registerId, empresaId]);
-        if (checkOpen.rows.length > 0) {
+
+        // 🛡️ CAPA 1: BLOQUEO DE ESTACIÓN FÍSICA
+        const checkRegister = await client.query("SELECT id FROM cash_shifts WHERE status = 'ABIERTA' AND register_id = $1 AND empresa_id = $2 LIMIT 1", [registerId, empresaId]);
+        if (checkRegister.rows.length > 0) {
             await client.query('ROLLBACK');
-            throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Esta estacion ya tiene el turno #${checkOpen.rows[0].id} abierto.` };
+            throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Esta estación ya tiene el turno #${checkRegister.rows[0].id} abierto. Ciérrelo primero.` };
         }
 
-        // 🚨 SAAS: Insertamos el turno atado a la empresa ($5)
+        // 🛡️ CAPA 2: BLOQUEO DE USUARIO (PREVIENE MULTI-CAJAS POR ERROR)
+        const checkUser = await client.query("SELECT id, register_id FROM cash_shifts WHERE status = 'ABIERTA' AND user_id = $1 AND empresa_id = $2 LIMIT 1", [userId, empresaId]);
+        if (checkUser.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Ya tienes el turno #${checkUser.rows[0].id} abierto en la Caja ${checkUser.rows[0].register_id}. Debes cerrarlo antes de operar en otra estación.` };
+        }
+
+        // 🛡️ CAPA 3: ESCUDO ANTI-FANTASMAS (NORMATIVA FISCAL ESTRICTA)
+        // Compara la fecha de apertura con la fecha de HOY en la zona horaria de Venezuela
+        const checkGhosts = await client.query(`
+            SELECT id, register_id
+            FROM cash_shifts
+            WHERE status = 'ABIERTA'
+            AND empresa_id = $1
+            AND DATE(opened_at AT TIME ZONE 'America/Caracas') < DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')
+            LIMIT 1
+        `, [empresaId]);
+
+        if (checkGhosts.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Existe un turno fantasma (Turno #${checkGhosts.rows[0].id} en la Caja ${checkGhosts.rows[0].register_id}) del día de ayer sin cerrar. Por control interno, audite y cierre ese turno antes de iniciar operaciones hoy.` };
+        }
+
+        // 🟢 Si pasa los 3 escudos, insertamos el turno de forma segura
         const result = await client.query(`
             INSERT INTO cash_shifts (initial_cash_usd, initial_cash_ves, status, register_id, user_id, empresa_id)
             VALUES ($1, $2, 'ABIERTA', $3, $4, $5) RETURNING *
         `, [parseFloat(initial_cash_usd) || 0, parseFloat(initial_cash_ves) || 0, registerId, userId, empresaId]);
-        
+
         await client.query('COMMIT');
         return result.rows[0];
     } catch (err) {
