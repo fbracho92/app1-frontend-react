@@ -4,7 +4,8 @@ import { CashService } from '../api/services';
 import { formatBs, formatUSD } from '../utils/formatters';
 import { tenantConfig } from '../config/tenantConfig';
 
-export const useCashRegister = ({ bcvRate, addToCart, onShiftClosed }) => {
+// 🚀 AÑADIMOS dailySalesList = [] PARA RECIBIR LOS TICKETS REALES DESDE APP.JSX
+export const useCashRegister = ({ bcvRate, addToCart, onShiftClosed, dailySalesList = [] }) => {
     const [cashShift, setCashShift] = useState(null); // null = cargando, 'CERRADA' = no hay turno, Objeto = turno abierto
     const [isCashOpen, setIsCashOpen] = useState(false);
     
@@ -234,9 +235,47 @@ export const useCashRegister = ({ bcvRate, addToCart, onShiftClosed }) => {
         // Auditoría de Donaciones (Inventario que salió sin dinero)
         const totalDonationsRef = sys.donations || 0;
 
-        const expectedPm = sys.pm || 0;
-        const expectedPunto = sys.punto || 0;
-        const expectedZelle = sys.zelle || 0;
+        // 🚀 LÓGICA CERTIFICADA: Extraemos los montos exactos ticket por ticket
+        // Ignoramos la suma corrupta del backend para evitar montos duplicados en pagos mixtos
+        let expectedPm = 0;
+        let expectedPunto = 0;
+        let expectedZelle = 0;
+
+        if (dailySalesList && dailySalesList.length > 0) {
+            dailySalesList.forEach(sale => {
+                if (sale.status === 'ANULADO') return; // Saltamos ventas anuladas
+                const methodStr = sale.payment_method || '';
+                
+                // 1. Extrae el número exacto para Pago Móvil (Incluso si es pago mixto)
+                const pmMatch = methodStr.match(/Pago Movil:\s*Bs\s*([0-9.]+)/i) || methodStr.match(/Pago Movil:\s*Bs([0-9.]+)/i);
+                if (pmMatch) {
+                    expectedPm += parseFloat(pmMatch[1]);
+                } else if (methodStr.toUpperCase() === 'PAGO MOVIL') {
+                    expectedPm += parseFloat(sale.total_ves);
+                }
+
+                // 2. Extrae el número exacto para Punto de Venta
+                const puntoMatch = methodStr.match(/Punto de Venta:\s*Bs\s*([0-9.]+)/i) || methodStr.match(/Punto de Venta:\s*Bs([0-9.]+)/i);
+                if (puntoMatch) {
+                    expectedPunto += parseFloat(puntoMatch[1]);
+                } else if (methodStr.toUpperCase() === 'PUNTO DE VENTA') {
+                    expectedPunto += parseFloat(sale.total_ves);
+                }
+
+                // 3. Extrae el número exacto para Zelle
+                const zelleMatch = methodStr.match(/Zelle:\s*Ref\s*([0-9.]+)/i) || methodStr.match(/Zelle:\s*Ref([0-9.]+)/i);
+                if (zelleMatch) {
+                    expectedZelle += parseFloat(zelleMatch[1]);
+                } else if (methodStr.toUpperCase() === 'ZELLE') {
+                    expectedZelle += parseFloat(sale.total_usd);
+                }
+            });
+        } else {
+            // Fallback de seguridad (En caso de recarga de página donde aún no bajen las ventas)
+            expectedPm = sys.pm || 0;
+            expectedPunto = sys.punto || 0;
+            expectedZelle = sys.zelle || 0;
+        }
 
         // --- UI/UX PREMIUM LAYOUT ---
         await Swal.fire({
@@ -348,7 +387,7 @@ export const useCashRegister = ({ bcvRate, addToCart, onShiftClosed }) => {
 
                     <div class="md:col-span-5 p-4 sm:p-8 bg-white flex flex-col h-full">
                         <h3 class="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-4 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span> <span class="truncate">Verificaci&oacute;n Digital</span>
+                            <span class="w-2 h-2 rounded-full bg-purple-50 shrink-0"></span> <span class="truncate">Verificaci&oacute;n Digital</span>
                         </h3>
                         
                         <div class="space-y-2 sm:space-y-3 flex-1">

@@ -168,7 +168,8 @@ function MainApp({ user, handleLogout }) {
             if (view === 'ADVANCED_REPORTS' && typeof fetchClosingsHistory === 'function') {
                 fetchClosingsHistory();
             }
-        }
+        },
+        dailySalesList // 🚀 NUEVO: Le pasamos las ventas del día para que audite con exactitud
     });
     
     // === CUSTOM HOOK: LÓGICA DE PUNTO DE VENTA (POS) ===
