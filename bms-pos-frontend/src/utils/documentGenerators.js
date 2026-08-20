@@ -1380,7 +1380,8 @@ export const printClosingReport = (shift, tenantIdentity = null) => {
     doc.text(`CONTROL FISCAL INTERNO`, pageWidth - 14, 15, { align: 'right' });
 
     doc.setFontSize(9);
-    doc.text(`TURNO ID: #${shift.id}`, pageWidth - 14, 22, { align: 'right' });
+    // 🚀 FIX APLICADO: Imprimimos el correlativo interno secuencial si existe, sino caemos al ID global
+    doc.text(`TURNO ID: #${shift.correlativo_interno || shift.id}`, pageWidth - 14, 22, { align: 'right' });
     doc.text(`${new Date(shift.opened_at).toLocaleDateString('es-VE')} ${new Date().toLocaleTimeString('es-VE')}`, pageWidth - 14, 30, { align: 'right' });
 
     let y = 55; 
