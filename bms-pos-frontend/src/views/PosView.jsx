@@ -57,18 +57,18 @@ const playBeep = (type = 'success') => {
 };
 
 // 🎨 ANIMACIÓN: Item del Carrito fluido y optimizado
-export const CartItem = React.memo(({ item, removeFromCart }) => (
+export const CartItem = React.memo(({ item, removeFromCart, isAuditMode }) => (
     <motion.div 
         layout
         initial={{ opacity: 0, scale: 0.9, x: -10 }}
         animate={{ opacity: 1, scale: 1, x: 0 }}
         exit={{ opacity: 0, scale: 0.9, x: 10 }}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={() => removeFromCart(item.id)} 
-        className="flex justify-between items-center py-3 px-3 mb-2 rounded-2xl bg-white/80 backdrop-blur-sm border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.03)] active:scale-95 cursor-pointer select-none group relative overflow-hidden"
+        whileHover={!isAuditMode ? { scale: 1.02 } : {}}
+        whileTap={!isAuditMode ? { scale: 0.98 } : {}}
+        onClick={() => !isAuditMode && removeFromCart(item.id)} 
+        className={`flex justify-between items-center py-3 px-3 mb-2 rounded-2xl bg-white/80 backdrop-blur-sm border shadow-[0_4px_12px_rgba(0,0,0,0.03)] select-none group relative overflow-hidden ${isAuditMode ? 'border-amber-200 cursor-not-allowed opacity-80' : 'border-slate-100 cursor-pointer active:scale-95'}`}
     >
-        <div className="absolute inset-0 bg-red-500/0 group-hover:bg-red-500/5 transition-colors duration-300"></div>
+        {!isAuditMode && <div className="absolute inset-0 bg-red-500/0 group-hover:bg-red-500/5 transition-colors duration-300"></div>}
         <div className="flex items-center gap-3 relative z-10">
             <div className="relative">
                 <ProductAvatar icon={item.icon_emoji} size="w-12 h-12 text-2xl drop-shadow-sm" />
@@ -81,7 +81,7 @@ export const CartItem = React.memo(({ item, removeFromCart }) => (
                 </motion.span>
             </div>
             <div className="flex flex-col">
-                <span className="font-bold text-slate-700 text-sm leading-tight line-clamp-1 group-hover:text-red-500 transition-colors">
+                <span className={`font-bold text-sm leading-tight line-clamp-1 transition-colors ${isAuditMode ? 'text-amber-800' : 'text-slate-700 group-hover:text-red-500'}`}>
                     {item.name} {item.is_service && <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded ml-1 border border-purple-200 shadow-sm uppercase tracking-widest font-black">Servicio</span>}
                 </span>
                 <span className="text-[10px] text-slate-400 font-bold tracking-wider mt-0.5">Ref {parseFloat(item.price_usd).toFixed(2)}</span>
@@ -89,27 +89,50 @@ export const CartItem = React.memo(({ item, removeFromCart }) => (
         </div>
         <div className="flex flex-col items-end relative z-10">
             <span className="font-black text-slate-800 text-sm">Ref {(item.price_usd * item.quantity).toFixed(2)}</span>
-            <span className="text-red-500 opacity-0 group-hover:opacity-100 text-[10px] font-black uppercase tracking-widest transition-opacity mt-1 flex items-center gap-1">
-                🗑️ Quitar
-            </span>
+            {!isAuditMode && (
+                <span className="text-red-500 opacity-0 group-hover:opacity-100 text-[10px] font-black uppercase tracking-widest transition-opacity mt-1 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Quitar
+                </span>
+            )}
         </div>
     </motion.div>
 ));
 
 // 🚀 REFACTORIZACIÓN A: Tarjeta de Producto Memoizada (Elimina el Lag de Renderizado)
-const ProductCard = React.memo(({ prod, addToCart }) => {
+const ProductCard = React.memo(({ prod, addToCart, isAuditMode }) => {
     const isOutOfStock = !prod.is_service && !prod.is_raw_material && (prod.stock || 0) <= 0;
     const isLowStock = !prod.is_service && !prod.is_raw_material && (prod.stock || 0) > 0 && (prod.stock || 0) <= 10;
     const isRawMaterial = prod.is_raw_material === true;
 
+    // 🛡️ Lógica combinada: se desactiva si no hay stock o si está en modo auditoría
+    const isDisabled = isOutOfStock || isAuditMode;
+
+    const handleCardClick = () => {
+        if (isAuditMode) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Modo Auditor\u00EDa Activo',
+                text: 'No puedes agregar productos ni facturar mientras auditas el turno de otro usuario.',
+                confirmButtonColor: '#f59e0b',
+                customClass: { popup: 'rounded-3xl' }
+            });
+            return;
+        }
+        if (!isOutOfStock) {
+            addToCart(prod);
+        }
+    };
+
     return (
         <motion.div
             variants={cardVariants}
-            whileHover={!isOutOfStock ? { y: -2, scale: 1.01 } : {}}
-            whileTap={!isOutOfStock ? { scale: 0.98 } : {}}
-            onClick={() => !isOutOfStock && addToCart(prod)}
+            whileHover={!isDisabled ? { y: -2, scale: 1.01 } : {}}
+            whileTap={!isDisabled ? { scale: 0.98 } : {}}
+            onClick={handleCardClick}
             className={`group relative bg-white rounded-[1.5rem] p-5 border transition-all duration-200 flex flex-col h-full select-none shadow-sm
-                ${isOutOfStock ? 'border-slate-100 opacity-60 grayscale cursor-not-allowed' : 'border-slate-100 hover:border-blue-300 hover:shadow-lg cursor-pointer'}`}
+                ${isOutOfStock ? 'border-slate-100 opacity-60 grayscale cursor-not-allowed' : 
+                  isAuditMode ? 'border-amber-100 opacity-80 cursor-not-allowed' : 
+                  'border-slate-100 hover:border-blue-300 hover:shadow-lg cursor-pointer'}`}
         >
             <div className="flex justify-between items-start mb-3">
                 <div className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg flex items-center gap-1.5 border shadow-sm ${
@@ -166,7 +189,18 @@ const PosView = ({
 
     const [isMobileCartOpen, setIsMobileCartOpen] = React.useState(false);
 
+    // 🛡️ ESCUDO: Verificamos si el usuario actual es el Administrador
+    const storedUser = JSON.parse(localStorage.getItem('bms_user') || '{}');
+    const isAuditMode = storedUser.role === 'ADMINISTRADOR' || storedUser.role_name === 'ADMINISTRADOR';
+
+    // 🧟 ESCUDO ANTI-ZOMBIS: Verificamos si el turno abierto es de un día anterior
+    const isZombieShift = cashShift && new Date(cashShift.opened_at).toLocaleDateString('es-VE') !== new Date().toLocaleDateString('es-VE');
+    
+    // Unificamos el bloqueo: Está bloqueado si es Auditor o si el turno está vencido
+    const isActionBlocked = isAuditMode || isZombieShift;
+
     const promptDeliveryInfo = async () => {
+        if (isAuditMode) return; // 🛡️ Bloqueo de Auditoría
         let driversList = [];
         let deliveryServices = [];
         try {
@@ -252,6 +286,8 @@ const PosView = ({
     };
 
     const handleDeliveryCheckout = () => {
+        if (isAuditMode) return; // 🛡️ Bloqueo de Auditoría
+
         if (isDelivery) {
             const hasDeliveryService = cart.some(item => 
                 item.is_service === true || 
@@ -276,6 +312,8 @@ const PosView = ({
     };
 
     const promptDiscount = async () => {
+        if (isAuditMode) return; // 🛡️ Bloqueo de Auditoría
+
         let rawTotal = 0;
         cart.forEach(i => rawTotal += (parseFloat(i.price_usd) * i.quantity));
         
@@ -392,19 +430,57 @@ const PosView = ({
                     <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar shrink-0"> 
                         
                         {/* 1. CAJA OPERATIVA (SIEMPRE VISIBLE EN PC Y MÓVIL) */}
-                        <motion.div 
-                            whileHover={{ scale: 1.02 }} 
-                            onClick={!cashShift ? promptOpenCash : undefined}
-                            className={`flex items-center gap-1.5 sm:gap-2.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl border transition-all duration-300 ${!cashShift && 'cursor-pointer hover:shadow-md'} ${cashShift ? 'bg-[#ECFDF5] border-[#A7F3D0]' : 'bg-rose-50 border-rose-200'}`}
-                        >
-                            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${cashShift ? 'bg-[#D1FAE5] text-[#059669]' : 'bg-rose-100 text-rose-600'}`}>
-                                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+<motion.div 
+    whileHover={{ scale: 1.02 }} 
+    onClick={!cashShift ? () => {
+        // 🛡️ ESCUDO UX PRO: Intercepta el clic si es administrador
+        if (isAuditMode) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Restricci\u00F3n de Rol',
+                html: `
+                    <div class="text-left font-sans mt-2">
+                        <p class="text-sm text-slate-600 mb-4">El rol <b>Administrador Maestro</b> tiene bloqueada la apertura de turnos por pol\u00EDticas de control interno.</p>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex gap-3 shadow-sm">
+                            <svg class="w-6 h-6 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                            <div>
+                                <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Normativa Vigente</p>
+                                <p class="text-xs text-slate-600 font-medium leading-relaxed">Usted solo est\u00E1 autorizado para auditar cajas, no para aperturar nuevas jornadas a su nombre.</p>
                             </div>
-                            <div className="hidden xl:flex flex-col text-left">
-                                <span className={`text-[9px] font-black uppercase tracking-widest leading-none mb-1 ${cashShift ? 'text-[#047857]' : 'text-rose-700'}`}>{cashShift ? 'Caja Abierta' : 'Caja Cerrada'}</span>
-                                <span className="text-[10px] font-bold text-slate-600 leading-none">{cashShift ? new Date(cashShift.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Click para abrir'}</span>
-                            </div>
-                        </motion.div>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#0f172a',
+                customClass: { 
+                    popup: 'rounded-[2rem] w-[90%] sm:w-auto',
+                    confirmButton: 'w-full bg-slate-900 hover:bg-black text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md mt-2 outline-none'
+                }
+            });
+        } else {
+            // Si es un cajero normal, procede a abrir la caja
+            promptOpenCash();
+        }
+    } : undefined}
+    className={`flex items-center gap-1.5 sm:gap-2.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl border transition-all duration-300 ${!cashShift && 'cursor-pointer hover:shadow-md'} ${isAuditMode ? 'bg-amber-50 border-amber-200' : cashShift ? 'bg-[#ECFDF5] border-[#A7F3D0]' : 'bg-rose-50 border-rose-200'}`}
+>
+    <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${isAuditMode ? 'bg-amber-100 text-amber-600' : cashShift ? 'bg-[#D1FAE5] text-[#059669]' : 'bg-rose-100 text-rose-600'}`}>
+        {isAuditMode ? (
+            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        ) : (
+            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+        )}
+    </div>
+    {/* 🛡️ Modificación del Header "Caja Abierta" / "Modo Auditoría" */}
+    <div className="hidden xl:flex flex-col text-left">
+        <span className={`text-[9px] font-black uppercase tracking-widest leading-none mb-1 ${isAuditMode ? 'text-amber-800' : cashShift ? 'text-[#047857]' : 'text-rose-700'}`}>
+            {isAuditMode ? 'MODO AUDITOR\u00CDA' : cashShift ? 'Caja Abierta' : 'Caja Cerrada'}
+        </span>
+        <span className={`text-[10px] font-bold leading-none ${isAuditMode ? 'text-amber-600' : 'text-slate-600'}`}>
+            {isAuditMode ? 'Ventas Bloqueadas' : cashShift ? new Date(cashShift.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Click para abrir'}
+        </span>
+    </div>
+</motion.div>
 
                         {/* 2. VENTAS DEL DÍA (Oculto en móvil, visible en PC) */}
                         <motion.button 
@@ -483,7 +559,7 @@ const PosView = ({
                                     didOpen: () => {
                                         document.querySelectorAll('.resume-btn').forEach(btn => {
                                             btn.addEventListener('click', (e) => {
-                                                // 🛡️ 1. FRENAMOS EL BURBUJEO DEL RATÓN
+                                                if (isAuditMode) return; // 🛡️ Bloqueo
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 
@@ -494,11 +570,10 @@ const PosView = ({
 
                                         document.querySelectorAll('.delete-btn').forEach(btn => {
                                             btn.addEventListener('click', (e) => {
-                                                // 🛡️ 1. FRENAMOS EL BURBUJEO
+                                                if (isAuditMode) return; // 🛡️ Bloqueo
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 
-                                                // 🚀 UX: Feedback visual instantáneo para ocultar el lag de red
                                                 Swal.fire({
                                                     title: '<h3 class="text-xl font-black text-slate-800 mt-2">Eliminando orden...</h3>',
                                                     html: '<p class="text-sm text-slate-500 font-medium">Actualizando base de datos</p>',
@@ -508,7 +583,6 @@ const PosView = ({
                                                     didOpen: () => Swal.showLoading()
                                                 });
                                                 
-                                                // 🛡️ 2. Ejecuta el borrado en segundo plano
                                                 handleDeleteHeldOrder(btn.dataset.id);
                                             });
                                         });
@@ -622,7 +696,7 @@ const PosView = ({
                                 didOpen: () => {
                                         document.querySelectorAll('.resume-btn').forEach(btn => {
                                             btn.addEventListener('click', (e) => {
-                                                // 🛡️ 1. FRENAMOS EL BURBUJEO DEL RATÓN
+                                                if (isAuditMode) return; // 🛡️ Bloqueo
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 
@@ -633,11 +707,10 @@ const PosView = ({
 
                                         document.querySelectorAll('.delete-btn').forEach(btn => {
                                             btn.addEventListener('click', (e) => {
-                                                // 🛡️ 1. FRENAMOS EL BURBUJEO
+                                                if (isAuditMode) return; // 🛡️ Bloqueo
                                                 e.preventDefault();
                                                 e.stopPropagation();
                                                 
-                                                // 🚀 UX: Feedback visual instantáneo para ocultar el lag de red
                                                 Swal.fire({
                                                     title: '<h3 class="text-xl font-black text-slate-800 mt-2">Eliminando orden...</h3>',
                                                     html: '<p class="text-sm text-slate-500 font-medium">Actualizando base de datos</p>',
@@ -647,7 +720,6 @@ const PosView = ({
                                                     didOpen: () => Swal.showLoading()
                                                 });
                                                 
-                                                // 🛡️ 2. Ejecuta el borrado en segundo plano
                                                 handleDeleteHeldOrder(btn.dataset.id);
                                             });
                                         });
@@ -721,13 +793,15 @@ const PosView = ({
                         <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400 transition-colors group-focus-within:text-blue-500">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </span>
-                        {/* 🚨 BLINDAJE LECTORA DE BARRAS: Atrapamos el Enter directamente */}
+                        {/* 🛡️ BLINDAJE LECTORA DE BARRAS: Atrapamos el Enter directamente */}
                         <Input 
                             key="pos-search-input-fix" 
                             placeholder="🔍 Buscar artículo o escanear código..." 
                             value={posSearchQuery || ''} 
+                            disabled={isAuditMode}
                             onChange={(e) => setPosSearchQuery(e.target.value)} 
                             onKeyDown={(e) => {
+                                if (isAuditMode) return; // 🛡️ Bloqueo de Auditoría
                                 if (e.key === 'Enter') {
                                     const query = e.target.value.trim();
                                     if (!query) return;
@@ -757,8 +831,8 @@ const PosView = ({
                                     }
                                 }
                             }}
-                            autoFocus={true} 
-                            className="w-full !pl-12 !bg-white !border-slate-200 focus:!border-blue-400 focus:!ring-4 focus:!ring-blue-500/10 !rounded-[1.25rem] py-3.5 text-sm font-bold text-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all"
+                            autoFocus={!isAuditMode} 
+                            className={`w-full !pl-12 !border-slate-200 focus:!border-blue-400 focus:!ring-4 focus:!ring-blue-500/10 !rounded-[1.25rem] py-3.5 text-sm font-bold text-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all ${isAuditMode ? '!bg-slate-100 opacity-60 cursor-not-allowed' : '!bg-white'}`}
                         />
                     </div>
                 </div>
@@ -794,7 +868,7 @@ const PosView = ({
                 <div className="flex-1 overflow-y-auto px-5 py-6 custom-scrollbar relative">
                     <motion.div variants={gridVariants} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                         {(currentProducts || []).map((prod) => (
-                            <ProductCard key={prod.id} prod={prod} addToCart={addToCart} />
+                            <ProductCard key={prod.id} prod={prod} addToCart={addToCart} isAuditMode={isAuditMode} />
                         ))}
                     </motion.div>
                 </div>
@@ -920,7 +994,7 @@ const PosView = ({
                                 <p className="text-[10px] font-black uppercase tracking-widest">Carrito Vacío</p>
                             </motion.div>
                         ) : (
-                            (cart || []).map(item => <CartItem key={item.id} item={item} removeFromCart={removeFromCart} />)
+                            (cart || []).map(item => <CartItem key={item.id} item={item} removeFromCart={removeFromCart} isAuditMode={isAuditMode} />)
                         )}
                     </AnimatePresence>
                 </div>
@@ -929,7 +1003,7 @@ const PosView = ({
                     {(cart || []).length > 0 && (
                         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-5 pb-3 border-t border-slate-100 bg-white shrink-0">
                             <div className="flex justify-end mb-4">
-                                <button onClick={promptDiscount} className={`text-[9px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm border outline-none active:scale-95 ${discountUSD > 0 ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200' : 'bg-slate-50 text-blue-600 hover:bg-blue-50 border-slate-200 hover:border-blue-200 hover:shadow-md'}`}>
+                                <button onClick={promptDiscount} disabled={isAuditMode} className={`text-[9px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm border outline-none active:scale-95 ${isAuditMode ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60' : discountUSD > 0 ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200' : 'bg-slate-50 text-blue-600 hover:bg-blue-50 border-slate-200 hover:border-blue-200 hover:shadow-md'}`}>
                                     <span className="text-sm">{discountUSD > 0 ? '🏷️' : '🎁'}</span>
                                     {discountUSD > 0 ? 'Modificar Descuento' : 'Aplicar Descuento'}
                                 </button>
@@ -959,26 +1033,39 @@ const PosView = ({
                         </div>
                     </div>
                     
-                    <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}>
+                    <motion.div whileHover={!isAuditMode ? { scale: 1.01 } : {}} whileTap={!isAuditMode ? { scale: 0.98 } : {}}>
                         <Button 
-                            variant={isDelivery ? "primary" : "danger"} 
-                            onClick={handleDeliveryCheckout} 
-                            disabled={(cart || []).length === 0}
-                            className={`w-full !rounded-[1.25rem] !py-4 text-sm font-black uppercase tracking-widest shadow-lg border-0 ${isDelivery ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/30 text-white' : 'bg-slate-800 hover:bg-slate-900 shadow-slate-800/20 text-white'}`}
-                        >
-                            <span className="mr-2 text-base">{isDelivery ? '🛵' : '💳'}</span>
-                            {isDelivery ? 'COBRAR DELIVERY' : 'COBRAR TICKET'}
-                        </Button>
+    variant={isDelivery ? "primary" : "danger"} 
+    onClick={handleDeliveryCheckout} 
+    disabled={(cart || []).length === 0 || isActionBlocked}
+    className={`w-full !rounded-[1.25rem] !py-4 text-sm font-black uppercase tracking-widest shadow-lg border-0 transition-all duration-300
+        ${isActionBlocked ? '!bg-amber-100 !text-amber-600 !shadow-none !cursor-not-allowed' : 
+        isDelivery ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/30 text-white' : 
+        'bg-slate-800 hover:bg-slate-900 shadow-slate-800/20 text-white'}`}
+>
+    <span className="flex items-center justify-center">
+        {isActionBlocked ? (
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+        ) : isDelivery ? (
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h8l1 4h3l2 4v4h-2a2 2 0 01-4 0H9a2 2 0 01-4 0H3v-6l2-6z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a2 2 0 100-4 2 2 0 000 4zM17 16a2 2 0 100-4 2 2 0 000 4z"></path></svg>
+        ) : (
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+        )}
+        {isZombieShift ? 'TURNO VENCIDO (CIERRE CAJA)' : isAuditMode ? 'BLOQUEADO (AUDITOR\u00CDA)' : isDelivery ? 'COBRAR DELIVERY' : 'COBRAR TICKET'}
+    </span>
+</Button>
                     </motion.div>
                     
                     <AnimatePresence>
-                        {(cart || []).length > 0 && (
+                        {(cart || []).length > 0 && !isAuditMode && (
                             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex gap-3 mt-3 overflow-hidden">
-                                <Button variant="cancel" onClick={() => { setCart([]); handleApplyDiscount('NONE', 0); setIsDelivery(false); setDeliveryInfo({ driver_id: '', driver_name: '', address: '', status: 'PENDIENTE' }); setIsMobileCartOpen(false); }} className="flex-1 !py-3 !rounded-xl text-[9px] font-black uppercase tracking-widest !bg-white !text-red-500 border-2 !border-red-100 hover:!bg-red-50 hover:!border-red-200">
-                                    <span className="text-xs mr-1">🗑️</span> CANCELAR
+                                <Button variant="cancel" onClick={() => { setCart([]); handleApplyDiscount('NONE', 0); setIsDelivery(false); setDeliveryInfo({ driver_id: '', driver_name: '', address: '', status: 'PENDIENTE' }); setIsMobileCartOpen(false); }} className="flex-1 !py-3 !rounded-xl text-[9px] font-black uppercase tracking-widest !bg-white !text-red-500 border-2 !border-red-100 hover:!bg-red-50 hover:!border-red-200 flex items-center justify-center">
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    CANCELAR
                                 </Button>
-                                <Button variant="warning" onClick={() => { handlePauseOrder(); setIsMobileCartOpen(false); }} className="flex-1 !py-3 !rounded-xl text-[9px] font-black uppercase tracking-widest !bg-amber-50 !text-amber-600 border-2 !border-amber-100 hover:!bg-amber-100 hover:!border-amber-200">
-                                    <span className="text-xs mr-1">⏳</span> PAUSAR
+                                <Button variant="warning" onClick={() => { handlePauseOrder(); setIsMobileCartOpen(false); }} className="flex-1 !py-3 !rounded-xl text-[9px] font-black uppercase tracking-widest !bg-amber-50 !text-amber-600 border-2 !border-amber-100 hover:!bg-amber-100 hover:!border-amber-200 flex items-center justify-center">
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    PAUSAR
                                 </Button>
                             </motion.div>
                         )}
