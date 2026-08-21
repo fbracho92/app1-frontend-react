@@ -336,66 +336,122 @@ export const LoginScreen = ({ onLoginSuccess }) => {
                                                 whileTap={cannotEnter ? {} : { scale: 0.98 }}
                                                 key={reg.id}
                                                 onClick={() => {
-                                                    if (isOccupiedByOther) {
-                                                        if (isManager) {
-                                                            // 🛡️ MODAL LEGAL DE AUDITORÍA (Diseño limpio y responsive)
-                                                            Swal.fire({
-                                                                icon: 'warning',
-                                                                title: 'Modo Auditoría Fiscal',
-                                                                html: `
-                                                                    <div class="text-left mt-2">
-                                                                        <p class="text-sm text-slate-600">Estás a punto de entrar a la caja operada por <b>${reg.occupant_name}</b>.</p>
-                                                                        <div class="bg-amber-50 border-l-4 border-amber-500 p-3 mt-3 rounded-r-xl">
-                                                                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">Advertencia Legal</p>
-                                                                            <p class="text-xs text-amber-600 font-medium mt-1">Podrás revisar movimientos y emitir Reportes X/Z, pero no facturar a tu nombre.</p>
-                                                                        </div>
-                                                                    </div>
-                                                                `,
-                                                                showCancelButton: true,
-                                                                confirmButtonText: 'Sí, Auditar Caja',
-                                                                cancelButtonText: 'Cancelar',
-                                                                confirmButtonColor: '#4f46e5',
-                                                                cancelButtonColor: '#e2e8f0',
-                                                                customClass: { 
-                                                                    popup: 'rounded-[2rem] w-[90%] sm:w-auto',
-                                                                    confirmButton: 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 px-4 rounded-xl transition-all shadow-lg active:scale-95 outline-none text-xs mt-2',
-                                                                    cancelButton: 'w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 px-4 rounded-xl transition-all outline-none text-xs mt-2',
-                                                                    actions: 'flex flex-col gap-0 w-full px-4'
-                                                                }
-                                                            }).then((result) => {
-                                                                if (result.isConfirmed) {
-                                                                    handleSelectRegister(reg.id); 
-                                                                }
-                                                            });
-                                                        } else {
-                                                            // Expulsión de Cajero
-                                                            Swal.fire({
-                                                                icon: 'error',
-                                                                title: 'Acceso Denegado',
-                                                                text: `La caja está en uso por ${reg.occupant_name}. No tienes permisos para acceder.`,
-                                                                confirmButtonColor: '#e11d48',
-                                                                customClass: { popup: 'rounded-[2rem] w-[90%] sm:w-auto' }
-                                                            }).then(() => {
-                                                                localStorage.removeItem('bms_token');
-                                                                localStorage.removeItem('bms_user');
-                                                                setLoggedUser(null);
-                                                                setCredentials({ username: '', password: '' });
-                                                                setStep('LOGIN');
-                                                            });
-                                                        }
-                                                    } else if (isBlockedForMe) {
-                                                        // 🛡️ BLOQUEO CRUZADO: Tiene otra caja abierta
-                                                        Swal.fire({
-                                                            icon: 'error',
-                                                            title: 'Normativa de Seguridad',
-                                                            text: 'No puedes abrir dos cajas simultáneamente. Termina tu jornada activa en la otra estación.',
-                                                            confirmButtonColor: '#0f172a',
-                                                            customClass: { popup: 'rounded-[2rem] w-[90%] sm:w-auto' }
-                                                        });
-                                                    } else {
-                                                        handleSelectRegister(reg.id);
-                                                    }
-                                                }}
+    // --- 1. CAJA OCUPADA POR OTRO USUARIO ---
+    if (isOccupiedByOther) {
+        if (isManager) {
+            // 🛡️ MODAL LEGAL DE AUDITORÍA (Diseño limpio y responsive)
+            Swal.fire({
+                icon: 'warning',
+                title: 'Modo Auditoría Fiscal',
+                html: `
+                    <div class="text-left mt-2">
+                        <p class="text-sm text-slate-600">Estás a punto de entrar a la caja operada por <b>${reg.occupant_name}</b>.</p>
+                        <div class="bg-amber-50 border-l-4 border-amber-500 p-3 mt-3 rounded-r-xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">Advertencia Legal</p>
+                            <p class="text-xs text-amber-600 font-medium mt-1">Podrás revisar movimientos y emitir Reportes X/Z, pero no facturar a tu nombre.</p>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Sí, Auditar Caja',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#4f46e5',
+                cancelButtonColor: '#e2e8f0',
+                customClass: { 
+                    popup: 'rounded-[2rem] w-[90%] sm:w-auto',
+                    confirmButton: 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 px-4 rounded-xl transition-all shadow-lg active:scale-95 outline-none text-xs mt-2',
+                    cancelButton: 'w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 px-4 rounded-xl transition-all outline-none text-xs mt-2',
+                    actions: 'flex flex-col gap-0 w-full px-4'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    handleSelectRegister(reg.id); 
+                }
+            });
+        } else {
+            // Expulsión de Cajero
+            Swal.fire({
+                icon: 'error',
+                title: 'Acceso Denegado',
+                text: `La caja está en uso por ${reg.occupant_name}. No tienes permisos para acceder.`,
+                confirmButtonColor: '#e11d48',
+                customClass: { popup: 'rounded-[2rem] w-[90%] sm:w-auto' }
+            }).then(() => {
+                localStorage.removeItem('bms_token');
+                localStorage.removeItem('bms_user');
+                setLoggedUser(null);
+                setCredentials({ username: '', password: '' });
+                setStep('LOGIN');
+            });
+        }
+    } 
+    // --- 2. CAJA BLOQUEADA (EL USUARIO YA TIENE OTRA ABIERTA) ---
+    else if (isBlockedForMe) {
+        // 🛡️ BLOQUEO CRUZADO: Tiene otra caja abierta
+        Swal.fire({
+            icon: 'error',
+            title: 'Acceso Denegado',
+            html: `
+                <div class="text-left font-sans mt-2">
+                    <p class="text-sm text-slate-600 mb-4">Por normativas de <b>Seguridad Fiscal</b>, no pueden existir dos turnos de facturación simultáneos para el mismo usuario.</p>
+                    <div class="bg-rose-50 border border-rose-200 rounded-xl p-3 flex gap-3">
+                        <svg class="w-6 h-6 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <div>
+                            <p class="text-[9px] font-black text-rose-700 uppercase tracking-widest mb-1">Error Crítico</p>
+                            <p class="text-xs text-rose-700 font-medium">Ya tienes un turno activo en otra estación. Debes cerrarlo primero.</p>
+                        </div>
+                    </div>
+                </div>
+            `,
+            confirmButtonText: 'Entendido',
+            confirmButtonColor: '#0f172a',
+            customClass: { 
+                popup: 'rounded-[2rem] w-[90%] sm:w-auto',
+                confirmButton: 'w-full bg-slate-900 hover:bg-black text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md mt-2 outline-none'
+            }
+        });
+    } 
+    // --- 3. CAJA CERRADA (INTENTO DE APERTURA) ---
+    else if (!isOpen) {
+        // ⚖️ BLINDAJE LEGAL: El Administrador Maestro no puede facturar
+        if (loggedUser?.role === 'ADMINISTRADOR') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Restricción de Rol',
+                html: `
+                    <div class="text-left font-sans mt-2">
+                        <p class="text-sm text-slate-600 mb-4">El rol <b>Administrador Maestro</b> tiene bloqueada la apertura de turnos por políticas de control interno.</p>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex gap-3 shadow-sm">
+                            <svg class="w-6 h-6 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                            <div>
+                                <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Normativa Vigente</p>
+                                <p class="text-xs text-slate-600 font-medium leading-relaxed">Usted solo está autorizado para auditar cajas que ya hayan sido aperturadas por un Cajero o Supervisor.</p>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#0f172a',
+                customClass: { 
+                    popup: 'rounded-[2rem] w-[90%] sm:w-auto',
+                    confirmButton: 'w-full bg-slate-900 hover:bg-black text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md mt-2 outline-none'
+                }
+            });
+            return;
+        }
+
+        // 🧹 PURGA DE FANTASMAS: Limpiamos la caché del navegador antes de abrir una caja nueva
+        localStorage.removeItem('bms_active_shift');
+        localStorage.removeItem('bms_active_register');
+
+        // Procedemos a abrir la caja con la memoria limpia
+        handleSelectRegister(reg.id);
+    } 
+    // --- 4. ACCEDIENDO A MI PROPIO TURNO ACTIVO ---
+    else {
+        handleSelectRegister(reg.id);
+    }
+}}
                                                 className={`w-full flex items-center justify-between p-3.5 sm:p-4 backdrop-blur-md border rounded-[1.15rem] transition-all duration-300 outline-none shadow-sm ${
                                                     isOpen && isOccupiedByMe
                                                         ? 'bg-blue-50/80 border-blue-200 hover:bg-blue-50 hover:border-blue-400 group hover:shadow-md' 
