@@ -2,9 +2,14 @@
 const pool = require('../config/db');
 const { getRate } = require('../utils/bcvState');
 
-// 1. ABRIR TURNO (Blindaje de 4 Capas: Reconexión, Estación, Usuario y Anti-Fantasmas)
-// 🚨 SAAS: Recibimos empresaId
-const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId, empresaId) => {
+// 1. ABRIR TURNO (Blindaje de 5 Capas: Rol, Reconexión, Estación, Usuario y Anti-Fantasmas)
+// 🚨 SAAS: Recibimos empresaId y userRole
+const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId, empresaId, userRole) => {
+    // ⚖️ BLINDAJE DE BACKEND: Administradores jamás pueden abrir cajas
+    if (userRole === 'ADMINISTRADOR') {
+        throw { status: 400, message: 'RESTRICCION_ROL', details: 'El rol Administrador tiene bloqueada la apertura de turnos.' };
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -13,7 +18,7 @@ const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId,
         await client.query('SELECT id FROM cash_registers WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [registerId, empresaId]);
 
         // 🚀 UX PRO: RECONEXIÓN INTELIGENTE (Auto-Sanado)
-        // Si ESTE usuario intenta abrir ESTA misma caja y ya estaba abierta, lo reconectamos en lugar de arrojar error.
+        // Verificamos si ESTE usuario ya tiene ESTA caja abierta. Si es así, lo reconectamos en lugar de dar error.
         const myCurrentShift = await client.query(`
             SELECT * FROM cash_shifts 
             WHERE status = 'ABIERTA' 
@@ -58,7 +63,7 @@ const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId,
             throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Existe un turno fantasma (Turno #${checkGhosts.rows[0].id} en la Caja ${checkGhosts.rows[0].register_id}) del día de ayer sin cerrar. Por control interno, audite y cierre ese turno antes de iniciar operaciones hoy.` };
         }
 
-        // 🟢 Si pasa todos los escudos, insertamos el turno nuevo de forma segura
+        // 🟢 Si pasa los escudos, insertamos el turno de forma segura
         const result = await client.query(`
             INSERT INTO cash_shifts (initial_cash_usd, initial_cash_ves, status, register_id, user_id, empresa_id)
             VALUES ($1, $2, 'ABIERTA', $3, $4, $5) RETURNING *
@@ -140,8 +145,8 @@ const processPaymentTotals = (salesRows, creditsRows, currentRate) => {
 };
 
 // 3. OBTENER ESTADO (Aislado por Estacion y con Bloqueo de Acceso)
-// 🚨 SAAS: Recibimos empresaId
-const getStatus = async (registerId, userId, empresaId) => {
+// 🚨 SAAS: Recibimos empresaId y userRole
+const getStatus = async (registerId, userId, empresaId, userRole) => {
     // 🚨 SAAS: Aseguramos el turno por empresa
     const shiftRes = await pool.query(`
         SELECT cs.*, u.username as occupant_name 
@@ -155,8 +160,9 @@ const getStatus = async (registerId, userId, empresaId) => {
     
     const shift = shiftRes.rows[0];
 
-    // BLOQUEO FISCAL: Si la caja la abrio otra persona, rechaza la entrada
-    if (shift.user_id && shift.user_id !== userId) {
+    // 🚨 PASE VIP UX PRO: Si la caja la abrió otra persona, rechaza la entrada (403),
+    // A MENOS que sea un ADMINISTRADOR, en cuyo caso le damos acceso a auditar.
+    if (shift.user_id && shift.user_id !== userId && userRole !== 'ADMINISTRADOR') {
         throw { 
             status: 403, 
             occupant: shift.occupant_name || 'Otro usuario' 

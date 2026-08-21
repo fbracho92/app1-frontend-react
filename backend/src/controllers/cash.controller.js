@@ -21,14 +21,20 @@ const open = async (req, res) => {
         const registerId = getRegisterId(req);
         const userId = req.user.id; // Extraído gracias al middleware de autenticación
         
-        // 🚨 SAAS: Extraemos la empresa logueada
+        // 🚨 SAAS: Extraemos la empresa logueada y el Rol
         const empresaId = req.user.empresa_id;
+        const userRole = req.user.role || req.user.role_name; // 🚨 AÑADIDO: Extraemos el Rol
         
-        const result = await cashService.openShift(req.body.initial_cash_usd, req.body.initial_cash_ves, registerId, userId, empresaId);
+        // Pasamos el userRole al servicio para que bloquee a los Administradores
+        const result = await cashService.openShift(req.body.initial_cash_usd, req.body.initial_cash_ves, registerId, userId, empresaId, userRole);
         res.status(200).json(result);
     } catch (e) {
-        if (e.message === 'CONFLICTO_TURNO_ABIERTO') res.status(400).json({ error: e.message, message: e.details });
-        else res.status(500).json({ error: e.message });
+        // Interceptamos tanto turnos abiertos como intentos de apertura por Administradores
+        if (e.message === 'CONFLICTO_TURNO_ABIERTO' || e.message === 'RESTRICCION_ROL') {
+            res.status(400).json({ error: e.message, message: e.details });
+        } else {
+            res.status(500).json({ error: e.message });
+        }
     }
 };
 
@@ -37,10 +43,12 @@ const getStatus = async (req, res) => {
         const registerId = getRegisterId(req);
         const userId = req.user.id;
         
-        // 🚨 SAAS: Extraemos la empresa logueada
+        // 🚨 SAAS: Extraemos la empresa logueada y el Rol
         const empresaId = req.user.empresa_id;
+        const userRole = req.user.role || req.user.role_name; // 🚨 AÑADIDO: Extraemos el Rol
         
-        const result = await cashService.getStatus(registerId, userId, empresaId);
+        // Pasamos el userRole al servicio para dar el Pase VIP a los Administradores
+        const result = await cashService.getStatus(registerId, userId, empresaId, userRole);
         res.status(200).json(result);
     } catch (e) {
         // 🚨 Interceptamos el bloqueo de caja ocupada para el control UX
