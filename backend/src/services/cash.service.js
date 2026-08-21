@@ -2,7 +2,7 @@
 const pool = require('../config/db');
 const { getRate } = require('../utils/bcvState');
 
-// 1. ABRIR TURNO (Blindaje de 3 Capas: Estación, Usuario y Anti-Fantasmas)
+// 1. ABRIR TURNO (Blindaje de 4 Capas: Reconexión, Estación, Usuario y Anti-Fantasmas)
 // 🚨 SAAS: Recibimos empresaId
 const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId, empresaId) => {
     const client = await pool.connect();
@@ -11,6 +11,22 @@ const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId,
 
         // Bloqueamos la fila de esta caja específica en la base de datos para evitar doble clic simultáneo
         await client.query('SELECT id FROM cash_registers WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [registerId, empresaId]);
+
+        // 🚀 UX PRO: RECONEXIÓN INTELIGENTE (Auto-Sanado)
+        // Si ESTE usuario intenta abrir ESTA misma caja y ya estaba abierta, lo reconectamos en lugar de arrojar error.
+        const myCurrentShift = await client.query(`
+            SELECT * FROM cash_shifts 
+            WHERE status = 'ABIERTA' 
+            AND user_id = $1 
+            AND register_id = $2 
+            AND empresa_id = $3 
+            LIMIT 1
+        `, [userId, registerId, empresaId]);
+
+        if (myCurrentShift.rows.length > 0) {
+            await client.query('COMMIT');
+            return myCurrentShift.rows[0]; // Devolvemos el turno existente de forma transparente
+        }
 
         // 🛡️ CAPA 1: BLOQUEO DE ESTACIÓN FÍSICA
         const checkRegister = await client.query("SELECT id FROM cash_shifts WHERE status = 'ABIERTA' AND register_id = $1 AND empresa_id = $2 LIMIT 1", [registerId, empresaId]);
@@ -42,7 +58,7 @@ const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId,
             throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Existe un turno fantasma (Turno #${checkGhosts.rows[0].id} en la Caja ${checkGhosts.rows[0].register_id}) del día de ayer sin cerrar. Por control interno, audite y cierre ese turno antes de iniciar operaciones hoy.` };
         }
 
-        // 🟢 Si pasa los 3 escudos, insertamos el turno de forma segura
+        // 🟢 Si pasa todos los escudos, insertamos el turno nuevo de forma segura
         const result = await client.query(`
             INSERT INTO cash_shifts (initial_cash_usd, initial_cash_ves, status, register_id, user_id, empresa_id)
             VALUES ($1, $2, 'ABIERTA', $3, $4, $5) RETURNING *
