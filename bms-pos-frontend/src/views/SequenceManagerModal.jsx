@@ -15,10 +15,8 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
     const identity = storedUser.identity || {};
     const baseConfigFiscal = identity.configFiscal || {};
 
-    // --- ESTADOS DE NAVEGACI\u00D3N ---
-    const [activeTab, setActiveTab] = useState('COMPANY'); // 'COMPANY' o 'REGISTERS'
+    const [activeTab, setActiveTab] = useState('COMPANY');
 
-    // --- ESTADOS PARA CONFIGURACI\u00D3N DE EMPRESA ---
     const [tenantForm, setTenantForm] = useState({
         companyName: identity.companyName || '',
         tradeName: identity.tradeName || '',
@@ -35,11 +33,9 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
     });
     const [isSavingTenant, setIsSavingTenant] = useState(false);
 
-    // --- ESTADOS MULTI-CAJA ---
     const [registers, setRegisters] = useState([]); 
     const [selectedRegId, setSelectedRegId] = useState(null); 
     
-    // --- ESTADOS DE CONTROL ---
     const [sequences, setSequences] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -75,7 +71,6 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
             
             if (regs.length > 0) {
                 setRegisters(regs);
-                // Si abrimos la pestaña de cajas, seleccionamos la actual por defecto
                 const initialReg = regs.find(r => r.id === activeLocalRegisterId) || regs[0];
                 handleSelectRegister(initialReg); 
             }
@@ -107,7 +102,6 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
         return date.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
-    // --- L\u00D3GICA DE EMPRESA ---
     const handleTenantChange = (e) => {
         const { name, value } = e.target;
         setTenantForm(prev => ({ ...prev, [name]: value }));
@@ -121,27 +115,37 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
         }));
     };
 
+    // ?? FIX 1: URL BLINDADA Y MANEJO DE ERROR HTML (404/500)
     const handleSaveTenant = async () => {
         setIsSavingTenant(true);
         try {
             const token = localStorage.getItem('bms_token');
-            const response = await fetch(`${API_URL}/api/system/tenant-settings`, {
+            const baseUrl = API_URL.replace(/\/api\/?$/, ''); // Limpia duplicados
+            const endpoint = `${baseUrl}/api/system/tenant-settings`;
+
+            const response = await fetch(endpoint, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(tenantForm)
             });
 
-            const result = await response.json();
+            const text = await response.text();
+            let result;
+            try {
+                result = JSON.parse(text);
+            } catch (err) {
+                throw new Error('Error en el Servidor (Posible HTML 404). Contacte a soporte.');
+            }
+
             if (!response.ok) throw new Error(result.error || 'Error al guardar');
 
-            // Actualizamos la sesion actual con la nueva identidad
             const updatedUser = { ...storedUser, identity: { ...storedUser.identity, ...tenantForm } };
             localStorage.setItem('bms_user', JSON.stringify(updatedUser));
 
             Swal.fire({
                 icon: 'success',
                 title: 'Guardado',
-                text: 'Configuraci\u00F3n actualizada exitosamente. El sistema se reiniciar\u00E1 para aplicar los cambios.',
+                text: 'Configuraci\u00F3n actualizada exitosamente. El sistema se reiniciar\u00E1.',
                 confirmButtonColor: '#10b981',
                 customClass: { popup: 'rounded-3xl' }
             }).then(() => {
@@ -154,28 +158,26 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
         }
     };
 
-    // --- L\u00D3GICA DE SECUENCIAS ---
+    // ?? FIX 2: PARÁMETROS COMPLETOS PARA EVITAR ERROR 400
     const handleUnlock = async (seq) => {
         const confirm = await Swal.fire({
             title: '\u00BFDesbloquear Correlativo?',
-            text: 'Modificar este n\u00FAmero afectar\u00E1 el Libro de Ventas legal. Este evento quedar\u00E1 registrado en la auditor\u00EDa.',
+            text: 'Modificar este n\u00FAmero afectar\u00E1 el Libro de Ventas legal.',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#0F172A', 
             cancelButtonColor: '#E2E8F0',  
             confirmButtonText: 'S\u00ED, Autorizar Edici\u00F3n',
             cancelButtonText: '<span style="color:#475569">Cancelar</span>',
-            customClass: {
-                popup: 'rounded-3xl',
-                confirmButton: 'rounded-xl text-sm font-bold tracking-wide',
-                cancelButton: 'rounded-xl text-sm font-bold tracking-wide'
-            }
+            customClass: { popup: 'rounded-3xl' }
         });
 
         if (confirm.isConfirmed) {
             try {
                 await SystemService.updateSequence({ 
                     document_type: seq.document_type, 
+                    prefix: seq.prefix || '', 
+                    current_number: seq.current_number || 0,
                     is_locked: false,
                     modified_by: currentUser,
                     admin_user_id: currentUserId,
@@ -211,7 +213,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                 register_id: selectedRegId
             });
 
-            Swal.fire({ icon: 'success', title: 'Blindado', text: `Correlativo fiscal actualizado de forma segura.`, timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
+            Swal.fire({ icon: 'success', title: 'Blindado', text: `Correlativo actualizado de forma segura.`, timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
             setEditingId(null);
             
             const resSeq = await SystemService.getSequences();
@@ -225,6 +227,8 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
         setEditingId(null);
         await SystemService.updateSequence({ 
             document_type: seq.document_type, 
+            prefix: seq.prefix || '', 
+            current_number: seq.current_number || 0,
             is_locked: true,
             modified_by: currentUser,
             admin_user_id: currentUserId,
@@ -302,9 +306,8 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                 : r
             ));
 
-            Swal.fire({ icon: 'success', title: 'Guardado', text: 'Calibraci\u00F3n de la estaci\u00F3n actualizada exitosamente.', timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
+            Swal.fire({ icon: 'success', title: 'Guardado', text: 'Calibraci\u00F3n exitosa.', timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
         } catch (error) {
-            console.error(error);
             Swal.fire('Error', 'No se pudo conectar con el servidor para guardar.', 'error');
         }
     };
@@ -315,7 +318,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
             html: `
                 <div class="flex flex-col gap-4 text-left px-2">
                     <div>
-                        <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nombre de la Estaci&oacute;n</label>
+                        <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nombre de la Estaci\u00F3n</label>
                         <input id="swal-reg-name" class="swal2-input !m-0 !w-full !rounded-xl !bg-slate-50 border border-slate-200" placeholder="Ej: Caja Pasillo 2">
                     </div>
                     <div>
@@ -349,7 +352,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                     admin_user_name: currentUser
                 });
                 
-                Swal.fire({ icon: 'success', title: '\u00A1Estaci\u00F3n Creada!', text: 'Se generaron los correlativos y secuencias desde cero.', timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
+                Swal.fire({ icon: 'success', title: '\u00A1Estaci\u00F3n Creada!', text: 'Se generaron los correlativos.', timer: 2000, showConfirmButton: false, customClass: { popup: 'rounded-3xl' } });
                 
                 await initModule(); 
                 if (res && res.data && res.data.id) {
@@ -371,12 +374,12 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
         <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 transition-opacity">
             <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] w-full max-w-6xl overflow-hidden shadow-2xl border border-white/20 flex flex-col md:flex-row h-[90vh] max-h-[90vh] animate-scale-up">
                 
-                {/* --- SIDEBAR DE NAVEGACI\u00D3N MAESTRA --- */}
+                {/* --- SIDEBAR DE NAVEGACIÓN MAESTRA --- */}
                 <div className="w-full md:w-80 bg-slate-50 border-r border-slate-100 flex flex-col overflow-hidden shrink-0">
                     <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-white">
                         <div>
                             <h2 className="text-xl font-black text-slate-800 tracking-tight">Centro de Control</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Configuraci&oacute;n SaaS</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{'Configuraci\u00F3n SaaS'}</p>
                         </div>
                         <button onClick={onClose} className="md:hidden p-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-500 text-slate-500 rounded-full transition-all">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -386,13 +389,15 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-2">General</span>
                         
-                        {/* TAB IDENTIDAD */}
                         <button onClick={() => { setActiveTab('COMPANY'); setSelectedRegId(null); }} className={`p-4 rounded-2xl text-left transition-all font-bold text-sm flex items-center gap-3 ${activeTab === 'COMPANY' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30' : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}>
-                            <span className="text-xl">&#127970;</span> Identidad y Fiscal
+                            <span className="flex items-center justify-center bg-white/20 p-1.5 rounded-lg shadow-sm">
+                                <svg className={`w-5 h-5 ${activeTab === 'COMPANY' ? 'text-white' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                            </span> 
+                            Identidad y Fiscal
                         </button>
 
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6 mb-1 px-2 flex justify-between items-center">
-                            Estaciones F&iacute;sicas
+                            {'Estaciones F\u00EDsicas'}
                             <span className="bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded text-[9px]">{registers.length}</span>
                         </span>
                         
@@ -414,15 +419,13 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                         )}
                         
                         <button onClick={handleAddRegister} className="mt-3 p-3.5 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 text-xs font-black uppercase hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 group outline-none">
-                            <span className="group-hover:scale-125 transition-transform">+</span> A&ntilde;adir Estaci&oacute;n
+                            <svg className="w-4 h-4 group-hover:scale-125 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+                            {'A\u00F1adir Estaci\u00F3n'}
                         </button>
                     </div>
                 </div>
 
-                {/* --- \u00C1REA DE CONTENIDO DIN\u00C1MICO --- */}
                 <div className="flex-1 flex flex-col overflow-hidden bg-white/40">
-                    
-                    {/* Header solo PC para cerrar */}
                     <div className="hidden md:flex justify-end p-4 shrink-0">
                         <button onClick={onClose} className="p-2.5 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-full transition-all shadow-sm border border-slate-100 outline-none">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -431,9 +434,6 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 md:pt-0">
                         
-                        {/* ========================================================================= */}
-                        {/* VISTA 1: IDENTIDAD Y FISCAL (BLOQUEADO SENIAT APLICADO) */}
-                        {/* ========================================================================= */}
                         {activeTab === 'COMPANY' && (
                             <div className="max-w-4xl mx-auto animate-fade-in flex flex-col gap-6 h-full pb-10">
                                 <div className="flex justify-between items-end mb-2">
@@ -442,12 +442,18 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                         <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Ajustes globales para {tenantForm.tradeName || 'tu negocio'}</p>
                                     </div>
                                     <Button variant="primary" onClick={handleSaveTenant} disabled={isSavingTenant} className="!bg-slate-900 hover:!bg-black text-white shadow-xl flex-1 md:flex-none text-xs uppercase tracking-widest font-black border-0 !py-3.5 !px-6 !rounded-xl">
-                                        {isSavingTenant ? 'Guardando...' : '&#128190; Guardar Cambios'}
+                                        {isSavingTenant ? (
+                                            'Guardando...'
+                                        ) : (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                                                <span>Guardar Cambios</span>
+                                            </div>
+                                        )}
                                     </Button>
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* PANEL IZQUIERDO: Bloqueo Legal SENIAT */}
                                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
                                         <div className="flex justify-between items-start mb-5">
                                             <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
@@ -455,18 +461,18 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                             </h3>
                                         </div>
                                         
-                                        {/* ?? ALERTA LEGAL SENIAT */}
                                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 flex gap-3 items-center">
-                                            <span className="text-blue-500 text-lg">&#9828;</span>
+                                            <span className="flex items-center justify-center p-2 bg-blue-100 rounded-full">
+                                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                                            </span>
                                             <p className="text-[9px] text-blue-800 font-medium leading-relaxed">
-                                                Por normativas del <b>SENIAT (Prov. 0071)</b>, el RIF y la Raz&oacute;n Social est&aacute;n bloqueados. Si requiere una modificaci&oacute;n, contacte a soporte.
+                                                Por normativas del <b>SENIAT (Prov. 0071)</b>, el RIF y la {'Raz\u00F3n Social'} est&aacute;n bloqueados. Si requiere una modificaci&oacute;n, contacte a soporte.
                                             </p>
                                         </div>
 
                                         <div className="space-y-4">
-                                            {/* ?? CAMPOS BLOQUEADOS (SOLO LECTURA) */}
                                             <Input 
-                                                label="Raz&oacute;n Social Legal" 
+                                                label={'Raz\u00F3n Social Legal'} 
                                                 name="companyName" 
                                                 value={tenantForm.companyName} 
                                                 disabled={true} 
@@ -481,7 +487,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                     className={inputClasses} 
                                                 />
                                                 <Input 
-                                                    label="C&eacute;dula / RIF" 
+                                                    label={'C\u00E9dula / RIF'} 
                                                     name="companyDocument" 
                                                     value={tenantForm.companyDocument} 
                                                     disabled={true}
@@ -489,10 +495,9 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 />
                                             </div>
                                             
-                                            {/* ?? CAMPOS EDITABLES */}
                                             <div className="grid grid-cols-2 gap-4">
                                                 <Input 
-                                                    label="Tel&eacute;fono" 
+                                                    label={'Tel\u00E9fono'} 
                                                     name="companyPhone" 
                                                     value={tenantForm.companyPhone} 
                                                     onChange={handleTenantChange} 
@@ -508,7 +513,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 />
                                             </div>
                                             <Input 
-                                                label="Direcci&oacute;n Fiscal Completa" 
+                                                label={'Direcci\u00F3n Fiscal Completa'} 
                                                 name="companyAddress" 
                                                 value={tenantForm.companyAddress} 
                                                 onChange={handleTenantChange} 
@@ -517,7 +522,6 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                         </div>
                                     </div>
 
-                                    {/* PANEL DERECHO */}
                                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
                                         <h3 className="text-[11px] font-black text-rose-600 uppercase tracking-widest mb-5 flex items-center gap-2">
                                             <span className="w-2 h-2 rounded-full bg-rose-500"></span> Normativas y Fiscalidad
@@ -527,8 +531,8 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 pl-1">Modalidad Base del Sistema</label>
                                                 <select name="invoiceMode" value={tenantForm.configFiscal.invoiceMode} onChange={handleTenantConfigChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:bg-white shadow-inner transition-all cursor-pointer">
                                                     <option value="FORMA_LIBRE">Forma Libre (Impresora Normal)</option>
-                                                    <option value="FISCAL_PRINTER">M&aacute;quina Fiscal (Impresora Serial)</option>
-                                                    <option value="ELECTRONIC">Facturaci&oacute;n Electr&oacute;nica (SENIAT)</option>
+                                                    <option value="FISCAL_PRINTER">{'M\u00E1quina Fiscal (Impresora Serial)'}</option>
+                                                    <option value="ELECTRONIC">{'Facturaci\u00F3n Electr\u00F3nica (SENIAT)'}</option>
                                                 </select>
                                                 <p className="text-[9px] text-slate-400 mt-2 italic">* Define c&oacute;mo se comporta el check de factura en el POS.</p>
                                             </div>
@@ -553,9 +557,6 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                             </div>
                         )}
 
-                        {/* ========================================================================= */}
-                        {/* VISTA 2: CORRELATIVOS Y CAJAS */}
-                        {/* ========================================================================= */}
                         {activeTab === 'REGISTERS' && (
                             <div className="flex flex-col gap-6 max-w-4xl mx-auto animate-fade-in pb-10">
                                 
@@ -570,7 +571,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                             </div>
                                             <h3 className="font-bold text-slate-800 text-lg">Sin Correlativos Visibles</h3>
-                                            <p className="text-slate-500 text-sm mt-2 max-w-sm mx-auto">Esta estaci&oacute;n no tiene secuencias registradas, o el aislamiento de seguridad impide que veas los datos de otra caja.</p>
+                                            <p className="text-slate-500 text-sm mt-2 max-w-sm mx-auto">Esta estaci&oacute;n no tiene secuencias registradas.</p>
                                         </div>
                                     ) : (
                                         activeSequences.map((seq) => (
@@ -610,7 +611,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                             )}
                                                         </div>
                                                         <div className="col-span-2">
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Pr&oacute;xima Factura</span>
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">{'Pr\u00F3xima Factura'}</span>
                                                             {!seq.is_locked ? (
                                                                 <Input type="number" min="0" value={editForm.current_number} onChange={(e) => setEditForm({...editForm, current_number: e.target.value})} className="mt-1 font-mono text-xl font-bold text-blue-700 text-center !rounded-xl !bg-white shadow-sm focus:!border-blue-300" />
                                                             ) : (
@@ -656,7 +657,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 </svg>
                                             </div>
                                             <div>
-                                                <h3 className="font-bold text-slate-800 text-sm">Calibraci&oacute;n T&eacute;cnica</h3>
+                                                <h3 className="font-bold text-slate-800 text-sm">{'Calibraci\u00F3n T\u00E9cnica'}</h3>
                                                 <p className="text-xs text-slate-400">Ajustes de Forma Libre para: <strong className="text-slate-600">{flConfig.name}</strong></p>
                                             </div>
                                         </div>
@@ -669,7 +670,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                                Serie de esta estaci&oacute;n
+                                                {'Serie de esta estaci\u00F3n'}
                                             </label>
                                             <Input 
                                                 type="text"
@@ -679,7 +680,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 onChange={(e) => setFlConfig({...flConfig, formaLibreSerie: e.target.value.toUpperCase()})}
                                             />
                                             <p className="text-[9px] text-slate-400 italic">
-                                                * El SENIAT exige una serie distinta por cada caja f&iacute;sica.
+                                                * El SENIAT exige una serie distinta por cada caja.
                                             </p>
                                         </div>
 
@@ -697,18 +698,13 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                                 />
                                                 <span className="absolute right-4 top-3.5 text-[9px] font-bold text-slate-400">MM</span>
                                             </div>
-                                            <p className="text-[9px] text-slate-400 italic">
-                                                * Calibre para esquivar el logo y RIF del papel continuo.
-                                            </p>
                                         </div>
                                     </div>
 
                                     <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 relative z-10">
                                         <div className="flex gap-3 items-center">
                                             <div className="text-amber-500 shrink-0 bg-white p-2 rounded-full shadow-sm">
-                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                                </svg>
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                             </div>
                                             <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
                                                 <strong>Sugerencia de Ahorro:</strong> Realice las pruebas de calce con papel bond blanco cortado a media carta antes de usar sus Formas Libres originales.
@@ -721,7 +717,7 @@ export const SequenceManagerModal = ({ isOpen, onClose, setReceiptPreview }) => 
                                             className="w-full md:w-auto text-[10px] font-black uppercase tracking-widest whitespace-nowrap px-6 py-3 !rounded-xl"
                                         >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                                            Imprimir Hoja de Gu&iacute;a
+                                            {'Imprimir Hoja de Gu\u00EDa'}
                                         </Button>
                                     </div>
                                 </div>
