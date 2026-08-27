@@ -125,8 +125,7 @@ const InventoryView = memo(({
         setProductForm({ 
             id: null, name: '', category: '', price_usd: 0.00, 
             stock: 0, is_taxable: true, icon_emoji: '📦', 
-            barcode: '', status: 'ACTIVE', expiration_date: '',
-            unit_measure: 'UND'
+            barcode: '', status: 'ACTIVE', expiration_date: '' 
         });
         setIsProductFormOpen(true);
     };
