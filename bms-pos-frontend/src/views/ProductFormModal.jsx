@@ -18,6 +18,47 @@ export const ProductFormModal = ({
 }) => {
     if (!isProductFormOpen) return null;
 
+    // Diccionario de unidades de medida (UOM)
+    const UOM_OPTIONS = [
+        { value: 'UND', label: '📦 Unidad (Por defecto)' },
+        { value: 'KG', label: '⚖️ Kilo' },
+        { value: 'GR', label: '⚖️ Gramos' },
+        { value: 'LT', label: '💧 Litros' },
+        { value: 'MTS', label: '📏 Metros' },
+        { value: '1/4 GALON', label: '🛢️ 1/4 Galon' },
+        { value: 'ATOMIZADOR', label: '🧴 Atomizador' },
+        { value: 'BLISTER', label: '💊 Blister' },
+        { value: 'BOLSA', label: '🛍️ Bolsa' },
+        { value: 'BOTELLA', label: '🍾 Botella' },
+        { value: 'BULTO', label: '📦 Bulto' },
+        { value: 'CAJAS', label: '📦 Caja' },
+        { value: 'CAPSULAS', label: '💊 Capsulas' },
+        { value: 'CENTIMETRO', label: '📏 Centimetro' },
+        { value: 'COMPRIMIDOS', label: '💊 Comprimidos' },
+        { value: 'CREMA', label: '🧴 Crema' },
+        { value: 'DOCENA', label: '🥚 Docena' },
+        { value: 'FRASCO AMPOLLA', label: '💉 Frasco Ampolla' },
+        { value: 'GALON', label: '🛢️ Galon' },
+        { value: 'GOTAS', label: '💧 Gotas' },
+        { value: 'GRANULADOS', label: '🧂 Granulados' },
+        { value: 'JARABE', label: '🥄 Jarabe' },
+        { value: 'MT2', label: '📐 Metros Cuadrados' },
+        { value: 'MT3', label: '🧊 Metros Cubicos' },
+        { value: 'ONZA', label: '⚖️ Onza' },
+        { value: 'OVULOS', label: '💊 Ovulos' },
+        { value: 'PAILA', label: '🪣 Paila' },
+        { value: 'PIEZA', label: '🧩 Pieza' },
+        { value: 'PORCION', label: '🍰 Porcion' },
+        { value: 'SACO', label: '🥔 Saco' },
+        { value: 'SOLUCIONES', label: '🧪 Soluciones' },
+        { value: 'SUPOSITORIOS', label: '💊 Supositorios' },
+        { value: 'SUSPENSION', label: '🧪 Suspension' },
+        { value: 'TABLETAS', label: '💊 Tabletas' },
+        { value: 'TABLETAS MASTICABLES', label: '🍬 Tabletas Masticables' },
+        { value: 'TAMBOR', label: '🛢️ Tambor' },
+        { value: 'UNGUENTO', label: '🧴 Unguento' }
+    ];
+
     return (
         <div className="fixed inset-0 z-[70] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
             <div className="bg-white rounded-[32px] w-full max-w-4xl shadow-2xl shadow-slate-900/50 overflow-hidden flex flex-col max-h-[95vh] animate-scale-up border border-slate-100">
@@ -27,12 +68,12 @@ export const ProductFormModal = ({
                     <div>
                         <h3 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
                             {productForm.id ? (
-                                <> <span className="bg-blue-100 text-blue-600 p-2 rounded-xl text-lg">✏️</span> <span>Editar Ficha Técnica</span> </>
+                                <> <span className="bg-blue-100 text-blue-600 p-2 rounded-xl text-lg">✏️</span> <span>Editar Ficha Tecnica</span> </>
                             ) : (
                                 <> <span className="bg-green-100 text-green-600 p-2 rounded-xl text-lg">✨</span> <span>Nuevo Producto</span> </>
                             )}
                         </h3>
-                        <p className="text-sm text-slate-400 font-medium mt-1 ml-12">Gestión de activos y cumplimiento fiscal</p>
+                        <p className="text-sm text-slate-400 font-medium mt-1 ml-12">Gestion de activos y cumplimiento fiscal</p>
                     </div>
                     <button onClick={() => setIsProductFormOpen(false)} className="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all transform hover:rotate-90 hover:scale-110 shadow-sm">✕</button>
                 </div>
@@ -101,12 +142,12 @@ export const ProductFormModal = ({
 
                                     <div className="grid grid-cols-2 gap-5">
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Categoría</label>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Categoria</label>
                                             <input type="text" list="category-list" name="category" value={productForm.category} onChange={handleProductFormChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 focus:bg-white focus:border-emerald-500 outline-none transition-all text-slate-700 font-bold" placeholder="Seleccionar..." />
                                             <datalist id="category-list">{uniqueCategories.map(c => <option key={c} value={c} />)}</datalist>
                                         </div>
                                         <Input
-                                            label="Código Barras"
+                                            label="Codigo Barras"
                                             name="barcode"
                                             value={productForm.barcode}
                                             onChange={handleProductFormChange}
@@ -121,8 +162,8 @@ export const ProductFormModal = ({
                         {/* SELECTOR: NATURALEZA DEL ÍTEM (Sustituye al antiguo Switch) */}
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-8">
                             <div className="mb-3">
-                                <span className="font-bold text-sm text-slate-700">Naturaleza del Ítem</span>
-                                <p className="text-[10px] text-slate-500">Define el comportamiento logístico y fiscal en el sistema.</p>
+                                <span className="font-bold text-sm text-slate-700">Naturaleza del Item</span>
+                                <p className="text-[10px] text-slate-500">Define el comportamiento logistico y fiscal en el sistema.</p>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -213,10 +254,21 @@ export const ProductFormModal = ({
                                         <>
                                             <div className={`relative group p-4 rounded-xl border ${productForm.id ? 'bg-slate-100 border-slate-200' : 'bg-white border-blue-200'}`}>
                                                 <div className="flex justify-between mb-2">
-                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Existencia Física</label>
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                                        Existencia Fisica ({productForm.unit_measure || 'UND'})
+                                                    </label>
                                                     {productForm.id && <span className="text-[10px] bg-slate-200 text-slate-600 px-2 rounded-full font-bold">🔒 BLOQUEADO</span>}
                                                 </div>
-                                                <input type="number" disabled={!!productForm.id} value={productForm.stock} onChange={e => setProductForm({ ...productForm, stock: e.target.value })} className="w-full bg-transparent text-2xl font-black outline-none disabled:text-slate-400" placeholder="0" />
+                                                <input 
+                                                    type="number" 
+                                                    step="0.001" 
+                                                    min="0"
+                                                    disabled={!!productForm.id} 
+                                                    value={productForm.stock} 
+                                                    onChange={e => setProductForm({ ...productForm, stock: e.target.value })} 
+                                                    className="w-full bg-transparent text-2xl font-black outline-none disabled:text-slate-400" 
+                                                    placeholder="0.000" 
+                                                />
                                                 {productForm.id && (
                                                     <div className="mt-2 text-[10px] text-slate-500 leading-tight bg-slate-200/50 p-2 rounded-lg border border-slate-200">
                                                         ⚖️ Por normativa, use <b>"Registrar Entrada/Salida"</b> para auditar cambios de stock.
@@ -224,19 +276,38 @@ export const ProductFormModal = ({
                                                 )}
                                             </div>
 
-                                            <div className={`p-4 rounded-xl border ${productForm.is_perishable ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200'}`}>
-                                                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                                                    <input type="checkbox" className="accent-orange-500 w-4 h-4" checked={productForm.is_perishable} onChange={(e) => setProductForm(p => ({ ...p, is_perishable: e.target.checked }))} />
-                                                    <span className={`text-xs font-bold uppercase ${productForm.is_perishable ? 'text-orange-700' : 'text-slate-400'}`}>Producto Perecedero</span>
-                                                </label>
-                                                {productForm.is_perishable && <input type="date" name="expiration_date" value={productForm.expiration_date || ''} onChange={handleProductFormChange} className="w-full p-2 rounded border border-orange-200 text-sm font-bold text-gray-700" />}
+                                            <div className="flex gap-4">
+                                                <div className={`flex-1 p-4 rounded-xl border ${productForm.is_perishable ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200'}`}>
+                                                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                                        <input type="checkbox" className="accent-orange-500 w-4 h-4" checked={productForm.is_perishable} onChange={(e) => setProductForm(p => ({ ...p, is_perishable: e.target.checked }))} />
+                                                        <span className={`text-xs font-bold uppercase ${productForm.is_perishable ? 'text-orange-700' : 'text-slate-400'}`}>Perecedero</span>
+                                                    </label>
+                                                    {productForm.is_perishable && <input type="date" name="expiration_date" value={productForm.expiration_date || ''} onChange={handleProductFormChange} className="w-full p-2 rounded border border-orange-200 text-sm font-bold text-gray-700" />}
+                                                </div>
+
+                                                {/* 📏 NUEVO: SELECTOR DE UNIDAD DE MEDIDA (UOM) */}
+                                                <div className="flex-1 p-4 rounded-xl border bg-slate-50 border-slate-200">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">Unidad / Empaque</label>
+                                                    <select 
+                                                        name="unit_measure" 
+                                                        value={productForm.unit_measure || 'UND'} 
+                                                        onChange={handleProductFormChange} 
+                                                        className="w-full bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-lg py-2 px-2 outline-none focus:border-blue-500"
+                                                    >
+                                                        {UOM_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {opt.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </div>
                                         </>
                                     ) : (
                                         <div className="bg-blue-50/50 border border-blue-100 p-6 rounded-xl flex items-center justify-center flex-col text-center h-full min-h-[160px]">
                                             <span className="text-3xl mb-3">☁️</span>
                                             <span className="text-sm font-bold text-blue-700 uppercase tracking-widest">Servicio Intangible</span>
-                                            <span className="text-[10px] text-blue-500 mt-2 max-w-[80%]">Este ítem no requiere control de inventario ni fechas de vencimiento.</span>
+                                            <span className="text-[10px] text-blue-500 mt-2 max-w-[80%]">Este item no requiere control de inventario ni fechas de vencimiento.</span>
                                         </div>
                                     )}
                                 </div>
@@ -246,10 +317,10 @@ export const ProductFormModal = ({
                                         <div className="flex justify-between items-center">
                                             <div>
                                                 <label className="text-[10px] font-bold text-slate-500 uppercase block">Impuesto (IVA)</label>
-                                                <span className="text-[10px] text-slate-400">Régimen General (16%)</span>
+                                                <span className="text-[10px] text-slate-400">Regimen General (16%)</span>
                                             </div>
-                                            <select name="is_taxable" value={productForm.is_taxable} onChange={handleProductFormChange} className="bg-white border text-xs font-bold text-slate-700 rounded-lg py-1 px-2">
-                                                <option value="true">SÍ (Gravado)</option>
+                                            <select name="is_taxable" value={productForm.is_taxable} onChange={handleProductFormChange} className="bg-white border text-xs font-bold text-slate-700 rounded-lg py-1 px-2 outline-none">
+                                                <option value="true">SI (Gravado)</option>
                                                 <option value="false">NO (Exento)</option>
                                             </select>
                                         </div>
@@ -258,7 +329,7 @@ export const ProductFormModal = ({
 
                                     <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
                                         <label className="text-[10px] font-bold text-slate-500 uppercase block">Estatus</label>
-                                        <select name="status" value={productForm.status} onChange={handleProductFormChange} className={`border-none text-xs font-bold rounded-lg py-2 pl-3 pr-8 ${productForm.status === 'ACTIVE' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                        <select name="status" value={productForm.status} onChange={handleProductFormChange} className={`border-none text-xs font-bold rounded-lg py-2 pl-3 pr-8 outline-none ${productForm.status === 'ACTIVE' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                                             <option value="ACTIVE">ACTIVO</option>
                                             <option value="INACTIVE">INACTIVO</option>
                                         </select>
@@ -268,7 +339,7 @@ export const ProductFormModal = ({
                         </div>
 
                         <div className="pt-6 sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent pb-2 z-20">
-                            <Button type="submit" className="w-full bg-slate-900 hover:bg-black text-white py-4 text-lg">
+                            <Button type="submit" className="w-full bg-slate-900 hover:bg-black text-white py-4 text-lg border-0 shadow-lg shadow-slate-900/20">
                                 <span>💾</span> <span>{productForm.id ? 'Guardar Cambios' : 'Registrar Producto'}</span>
                             </Button>
                         </div>

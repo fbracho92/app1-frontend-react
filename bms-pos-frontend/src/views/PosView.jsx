@@ -98,29 +98,181 @@ export const CartItem = React.memo(({ item, removeFromCart, isAuditMode }) => (
     </motion.div>
 ));
 
-// 🚀 REFACTORIZACIÓN A: Tarjeta de Producto Memoizada (Elimina el Lag de Renderizado)
-const ProductCard = React.memo(({ prod, addToCart, isAuditMode }) => {
+// 🚀 REFACTORIZACIÓN UOM: Tarjeta Multi-Medidas (Kilos, Litros, Metros, Blister, Unidades)
+const ProductCard = React.memo(({ prod, addToCart, isAuditMode, isZombieShift }) => {
     const isOutOfStock = !prod.is_service && !prod.is_raw_material && (prod.stock || 0) <= 0;
     const isLowStock = !prod.is_service && !prod.is_raw_material && (prod.stock || 0) > 0 && (prod.stock || 0) <= 10;
     const isRawMaterial = prod.is_raw_material === true;
+    
+    // 📏 CORE UOM: Normalizamos el string para evitar fallos de BD y errores de compilacion
+    const rawUnit = (prod.unit_measure || 'UND').toUpperCase().trim();
+    const unit = rawUnit.replace(/[ÁÀÄÂ]/g,'A').replace(/[ÉÈËÊ]/g,'E').replace(/[ÍÌÏÎ]/g,'I').replace(/[ÓÒÖÔ]/g,'O').replace(/[ÚÙÜÛ]/g,'U');
+    
+    // Si la unidad es UND o UNIDAD, se va directo al carrito. Si es cualquier otra, abre la calculadora.
+    const isFractionable = !['UND', 'UNIDAD'].includes(unit);
 
-    // 🛡️ Lógica combinada: se desactiva si no hay stock o si está en modo auditoría
-    const isDisabled = isOutOfStock || isAuditMode;
+    // 🎨 MEGA-DICCIONARIO VISUAL UX PRO
+    const unitStyles = {
+        'KG':  { icon: '⚖️', label: 'POR KILO', color: 'bg-sky-50 text-sky-600 border-sky-200', dot: 'bg-sky-500' },
+        'GR':  { icon: '⚖️', label: 'GRAMOS', color: 'bg-teal-50 text-teal-600 border-teal-200', dot: 'bg-teal-500' },
+        'LT':  { icon: '💧', label: 'LITROS', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', dot: 'bg-cyan-500' },
+        'MTS': { icon: '📏', label: 'METROS', color: 'bg-indigo-50 text-indigo-600 border-indigo-200', dot: 'bg-indigo-500' },
+        'BLS': { icon: '💊', label: 'BLISTER', color: 'bg-pink-50 text-pink-600 border-pink-200', dot: 'bg-pink-500' },
+        'BLISTER': { icon: '💊', label: 'BLISTER', color: 'bg-pink-50 text-pink-600 border-pink-200', dot: 'bg-pink-500' },
+        'UND': { icon: '📦', label: (prod.stock || 0) + ' Und', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', dot: 'bg-emerald-500' },
+        'UNIDAD': { icon: '📦', label: (prod.stock || 0) + ' Und', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', dot: 'bg-emerald-500' },
+        '1/4 GALON': { icon: '🛢️', label: '1/4 GALON', color: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
+        'ATOMIZADOR': { icon: '🧴', label: 'ATOMIZ.', color: 'bg-teal-50 text-teal-600 border-teal-200', dot: 'bg-teal-500' },
+        'BOLSA': { icon: '🛍️', label: 'BOLSA', color: 'bg-orange-50 text-orange-600 border-orange-200', dot: 'bg-orange-500' },
+        'BOTELLA': { icon: '🍾', label: 'BOTELLA', color: 'bg-blue-50 text-blue-600 border-blue-200', dot: 'bg-blue-500' },
+        'BULTO': { icon: '📦', label: 'BULTO', color: 'bg-stone-50 text-stone-600 border-stone-200', dot: 'bg-stone-500' },
+        'CAJAS': { icon: '📦', label: 'CAJA', color: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
+        'CAPSULAS': { icon: '💊', label: 'CAPSULA', color: 'bg-rose-50 text-rose-600 border-rose-200', dot: 'bg-rose-500' },
+        'CENTIMETRO': { icon: '📏', label: 'CM', color: 'bg-indigo-50 text-indigo-600 border-indigo-200', dot: 'bg-indigo-500' },
+        'COMPRIMIDOS': { icon: '💊', label: 'COMPRIM.', color: 'bg-pink-50 text-pink-600 border-pink-200', dot: 'bg-pink-500' },
+        'CREMA': { icon: '🧴', label: 'CREMA', color: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200', dot: 'bg-fuchsia-500' },
+        'DOCENA': { icon: '🥚', label: 'DOCENA', color: 'bg-yellow-50 text-yellow-600 border-yellow-200', dot: 'bg-yellow-500' },
+        'FRASCO AMPOLLA': { icon: '💉', label: 'AMPOLLA', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', dot: 'bg-cyan-500' },
+        'GALON': { icon: '🛢️', label: 'GALON', color: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
+        'GOTAS': { icon: '💧', label: 'GOTAS', color: 'bg-sky-50 text-sky-600 border-sky-200', dot: 'bg-sky-500' },
+        'GRANULADOS': { icon: '🧂', label: 'GRANUL.', color: 'bg-orange-50 text-orange-600 border-orange-200', dot: 'bg-orange-500' },
+        'JARABE': { icon: '🥄', label: 'JARABE', color: 'bg-red-50 text-red-600 border-red-200', dot: 'bg-red-500' },
+        'MT2': { icon: '📐', label: 'MT2', color: 'bg-indigo-50 text-indigo-600 border-indigo-200', dot: 'bg-indigo-500' },
+        'MT3': { icon: '🧊', label: 'MT3', color: 'bg-indigo-50 text-indigo-600 border-indigo-200', dot: 'bg-indigo-500' },
+        'ONZA': { icon: '⚖️', label: 'ONZA', color: 'bg-teal-50 text-teal-600 border-teal-200', dot: 'bg-teal-500' },
+        'OVULOS': { icon: '💊', label: 'OVULO', color: 'bg-rose-50 text-rose-600 border-rose-200', dot: 'bg-rose-500' },
+        'PAILA': { icon: '🪣', label: 'PAILA', color: 'bg-stone-50 text-stone-600 border-stone-200', dot: 'bg-stone-500' },
+        'PIEZA': { icon: '🧩', label: 'PIEZA', color: 'bg-violet-50 text-violet-600 border-violet-200', dot: 'bg-violet-500' },
+        'PORCION': { icon: '🍰', label: 'PORCION', color: 'bg-orange-50 text-orange-600 border-orange-200', dot: 'bg-orange-500' },
+        'SACO': { icon: '🥔', label: 'SACO', color: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
+        'SOLUCIONES': { icon: '🧪', label: 'SOLUCION', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', dot: 'bg-cyan-500' },
+        'SUPOSITORIOS': { icon: '💊', label: 'SUPOSIT.', color: 'bg-rose-50 text-rose-600 border-rose-200', dot: 'bg-rose-500' },
+        'SUSPENSION': { icon: '🧪', label: 'SUSPENS.', color: 'bg-sky-50 text-sky-600 border-sky-200', dot: 'bg-sky-500' },
+        'TABLETAS': { icon: '💊', label: 'TABLETA', color: 'bg-pink-50 text-pink-600 border-pink-200', dot: 'bg-pink-500' },
+        'TABLETAS MASTICABLES': { icon: '🍬', label: 'MASTIC.', color: 'bg-pink-50 text-pink-600 border-pink-200', dot: 'bg-pink-500' },
+        'TAMBOR': { icon: '🛢️', label: 'TAMBOR', color: 'bg-stone-50 text-stone-600 border-stone-200', dot: 'bg-stone-500' },
+        'UNGUENTO': { icon: '🧴', label: 'UNGUENTO', color: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200', dot: 'bg-fuchsia-500' }
+    };
+    
+    const currentStyle = unitStyles[unit] || { icon: '🏷️', label: rawUnit, color: 'bg-slate-100 text-slate-600 border-slate-300', dot: 'bg-slate-500' };
 
-    const handleCardClick = () => {
+    // 🛡️ Lógica combinada de bloqueos
+    const isActionBlocked = isAuditMode || isZombieShift;
+    const isDisabled = isOutOfStock || isActionBlocked;
+
+    const handleCardClick = async () => {
         if (isAuditMode) {
-            Swal.fire({
+            return Swal.fire({
                 icon: 'warning',
-                title: 'Modo Auditor\u00EDa Activo',
-                text: 'No puedes agregar productos ni facturar mientras auditas el turno de otro usuario.',
+                title: 'Modo Auditoria Activo',
+                text: 'No puedes agregar productos ni facturar mientras auditas.',
                 confirmButtonColor: '#f59e0b',
                 customClass: { popup: 'rounded-3xl' }
             });
+        }
+        
+        if (isZombieShift) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'Turno Vencido',
+                text: 'Debes realizar el Cierre Z antes de procesar ventas.',
+                confirmButtonColor: '#e11d48',
+                customClass: { popup: 'rounded-3xl' }
+            });
+        }
+        
+        if (isOutOfStock) return;
+
+        // 🧮 CALCULADORA UOM (100% Libre de Template Literals y Unicode para proteger Vite)
+        if (isFractionable) {
+            const basePrice = parseFloat(prod.price_usd) || 0;
+            const basePriceStr = basePrice.toFixed(2);
+
+            const { value: measureData } = await Swal.fire({
+                title: '<h3 class="text-2xl font-black text-slate-800 mt-2">' + currentStyle.icon + ' Calculadora de Medida</h3>',
+                html: 
+                    '<div class="flex flex-col gap-4 text-left mt-4 font-sans px-2">' +
+                        '<div class="bg-blue-50/80 border border-blue-100 rounded-xl p-4 flex justify-between items-center shadow-inner backdrop-blur-sm">' +
+                            '<span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Precio Base</span>' +
+                            '<span class="text-xl font-black text-blue-800">Ref ' + basePriceStr + ' / ' + rawUnit + '</span>' +
+                        '</div>' +
+                        '<div>' +
+                            '<label class="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">Cantidad a despachar (' + rawUnit + ')</label>' +
+                            '<div class="relative">' +
+                                '<input id="measure-val" type="number" step="0.001" min="0.001" class="w-full bg-white border-2 border-slate-200 rounded-xl p-4 pl-14 text-3xl font-black text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all placeholder-slate-300" placeholder="0.000" autocomplete="off"/>' +
+                                '<span class="absolute left-5 top-1/2 -translate-y-1/2 text-xl opacity-60 select-none">' + currentStyle.icon + '</span>' +
+                            '</div>' +
+                            '<p class="text-[10px] text-slate-400 font-bold mt-2 tracking-widest uppercase">Ej: 1.5, 0.250, 3...</p>' +
+                        '</div>' +
+                        '<div class="mt-2 p-4 bg-emerald-50 rounded-xl border border-emerald-200 flex justify-between items-center">' +
+                            '<span class="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Total Calculado</span>' +
+                            '<span class="text-2xl font-black text-emerald-700 tracking-tighter" id="measure-total">Ref 0.00</span>' +
+                        '</div>' +
+                    '</div>',
+                showCancelButton: true,
+                confirmButtonText: 'Procesar Venta',
+                cancelButtonText: 'Cancelar',
+                customClass: {
+                    popup: 'rounded-[2.5rem] p-6 shadow-2xl border border-white/80 backdrop-blur-xl bg-white/90',
+                    htmlContainer: '!mx-2 !mt-0',
+                    actions: 'flex flex-wrap gap-3 w-full justify-center px-4 pb-2 mt-6',
+                    confirmButton: 'flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-500/30 active:scale-95 outline-none',
+                    cancelButton: 'w-full md:w-auto bg-slate-100 text-slate-500 hover:bg-slate-200 font-bold py-3.5 px-6 rounded-xl transition-all active:scale-95 outline-none'
+                },
+                buttonsStyling: false,
+                didOpen: () => {
+                    const input = document.getElementById('measure-val');
+                    const totalDisplay = document.getElementById('measure-total');
+
+                    input.addEventListener('input', (e) => {
+                        const amount = parseFloat(e.target.value) || 0;
+                        const calculated = amount * basePrice;
+                        totalDisplay.innerText = 'Ref ' + calculated.toFixed(2);
+                    });
+                    input.focus();
+                },
+                preConfirm: () => {
+                    const valInput = document.getElementById('measure-val').value;
+                    if (!valInput || valInput.trim() === '') {
+                        Swal.showValidationMessage('Ingresa la cantidad');
+                        return false;
+                    }
+                    const amount = parseFloat(valInput);
+                    if (isNaN(amount) || amount <= 0) {
+                        Swal.showValidationMessage('La cantidad debe ser mayor a 0');
+                        return false;
+                    }
+
+                    const calculatedPrice = amount * basePrice;
+                    return { amount, calculatedPrice };
+                }
+            });
+
+            if (measureData) {
+                // Empaquetado legal usando solo concatenacion tradicional
+                const fractionedProduct = {
+                    ...prod,
+                    id: prod.id + '-UOM-' + Date.now(),
+                    name: prod.name + ' (' + measureData.amount + ' ' + rawUnit + ')',
+                    price_usd: measureData.calculatedPrice,
+                    is_fractioned: true,
+                    original_amount: measureData.amount,
+                    unit_measure: rawUnit
+                };
+
+                if (typeof window !== 'undefined' && typeof playBeep === 'function') {
+                    playBeep('success');
+                } else if (typeof window !== 'undefined' && window.playBeep) {
+                    window.playBeep('success');
+                }
+                
+                addToCart(fractionedProduct);
+            }
             return;
         }
-        if (!isOutOfStock) {
-            addToCart(prod);
-        }
+
+        // Si es unidad tradicional
+        addToCart(prod);
     };
 
     return (
@@ -131,7 +283,7 @@ const ProductCard = React.memo(({ prod, addToCart, isAuditMode }) => {
             onClick={handleCardClick}
             className={`group relative bg-white rounded-[1.5rem] p-5 border transition-all duration-200 flex flex-col h-full select-none shadow-sm
                 ${isOutOfStock ? 'border-slate-100 opacity-60 grayscale cursor-not-allowed' : 
-                  isAuditMode ? 'border-amber-100 opacity-80 cursor-not-allowed' : 
+                  isActionBlocked ? 'border-amber-100 opacity-80 cursor-not-allowed' : 
                   'border-slate-100 hover:border-blue-300 hover:shadow-lg cursor-pointer'}`}
         >
             <div className="flex justify-between items-start mb-3">
@@ -140,10 +292,10 @@ const ProductCard = React.memo(({ prod, addToCart, isAuditMode }) => {
                         isRawMaterial ? 'bg-orange-50 text-orange-600 border-orange-200' :
                         isOutOfStock ? 'bg-slate-100 text-slate-400 border-slate-200' :
                         isLowStock ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' :
-                        'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        currentStyle.color
                     }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${prod.is_service ? 'bg-purple-500' : isRawMaterial ? 'bg-orange-500' : isOutOfStock ? 'bg-slate-400' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-                    {prod.is_service ? 'SERVICIO' : isRawMaterial ? 'INSUMO' : isOutOfStock ? 'AGOTADO' : `${prod.stock || 0} Und`}
+                    <span className={`w-1.5 h-1.5 rounded-full ${prod.is_service ? 'bg-purple-500' : isRawMaterial ? 'bg-orange-500' : isOutOfStock ? 'bg-slate-400' : isLowStock ? 'bg-amber-500' : currentStyle.dot}`}></span>
+                    {prod.is_service ? 'SERVICIO' : isRawMaterial ? 'INSUMO' : isOutOfStock ? 'AGOTADO' : currentStyle.label}
                 </div>
             </div>
             <div className="flex-1 flex flex-col items-center text-center gap-3 mb-4 mt-1">
@@ -161,7 +313,7 @@ const ProductCard = React.memo(({ prod, addToCart, isAuditMode }) => {
                         <span className="text-xl font-black tracking-tighter">{(prod.price_ves || 0).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
                     </div>
                     <div className="text-[10px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100 tracking-widest">
-                        Ref ${(prod.price_usd || 0).toFixed(2)}
+                        Ref ${(prod.price_usd || 0).toFixed(2)} {isFractionable ? ('/ ' + rawUnit) : ''}
                     </div>
                 </div>
             </div>
@@ -198,6 +350,27 @@ const PosView = ({
     
     // Unificamos el bloqueo: Está bloqueado si es Auditor o si el turno está vencido
     const isActionBlocked = isAuditMode || isZombieShift;
+
+    // 🔥 EL CADENERO: Verifica si hay bloqueo antes de hacer cualquier acción
+    const blockIfLocked = () => {
+        if (isActionBlocked) {
+            Swal.fire({
+                icon: isZombieShift ? 'error' : 'warning',
+                title: isZombieShift ? 'Turno Vencido' : 'Modo Auditoria Activo',
+                text: isZombieShift 
+                    ? 'Debes ir a la seccion de Cierres y liquidar la jornada anterior antes de registrar movimientos.' 
+                    : 'Acceso de Solo Lectura. No puedes alterar el carrito ni facturar mientras auditas.',
+                confirmButtonColor: isZombieShift ? '#e11d48' : '#f59e0b',
+                customClass: { popup: 'rounded-[2rem]' }
+            });
+            return true; // Retorna true si hay un bloqueo
+        }
+        return false; // Retorna false si tiene vía libre
+    };
+
+    // 🛡️ Proxies seguros que reemplazan las llamadas directas
+    const safeAddToCart = (prod) => { if (!blockIfLocked()) addToCart(prod); };
+    const safeRemoveFromCart = (id) => { if (!blockIfLocked()) removeFromCart(id); }
 
     const promptDeliveryInfo = async () => {
         if (isAuditMode) return; // 🛡️ Bloqueo de Auditoría
@@ -868,7 +1041,7 @@ const PosView = ({
                 <div className="flex-1 overflow-y-auto px-5 py-6 custom-scrollbar relative">
                     <motion.div variants={gridVariants} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                         {(currentProducts || []).map((prod) => (
-                            <ProductCard key={prod.id} prod={prod} addToCart={addToCart} isAuditMode={isAuditMode} />
+                            <ProductCard key={prod.id} prod={prod} addToCart={safeAddToCart} isAuditMode={isAuditMode} isZombieShift={isZombieShift} />
                         ))}
                     </motion.div>
                 </div>
