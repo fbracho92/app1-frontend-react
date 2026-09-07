@@ -4,9 +4,18 @@ import Swal from 'sweetalert2';
 import { formatBs, formatUSD } from './formatters';
 import { tenantConfig } from '../config/tenantConfig'; // <-- INYECCIÃ“N DE MARCA BLANCA
 
-// --- FUNCIÃ“N: IMPRIMIR REPORTE KARDEX (ADAPTADO A MARCA BLANCA) ---
-export const printKardexReport = (kardexProduct, kardexHistory, bcvRate) => {
+// --- FUNCI¨®N: IMPRIMIR REPORTE KARDEX (ADAPTADO A MARCA BLANCA, UX PRO Y LEGAL VZLA) ---
+export const printKardexReport = (kardexProduct, kardexHistory, bcvRate, userIdentity = null) => {
     if (!kardexProduct || kardexHistory.length === 0) return Swal.fire('Error', 'No hay datos para exportar', 'warning');
+
+    // ?? ORDEN CRONOL¨®GICO LEGAL (Art. 177 ISLR): Invertimos el historial para que vaya del m¨¢s antiguo al m¨¢s reciente
+    // Creamos una copia para no mutar el array original del componente
+    const sortedHistory = [...kardexHistory].reverse();
+
+    // ?? FASE MARCA BLANCA: Fusionamos identidad corporativa del inquilino activo
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
 
     const doc = new jsPDF('l', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -19,6 +28,13 @@ export const printKardexReport = (kardexProduct, kardexHistory, bcvRate) => {
         blue: [37, 99, 235]      // Blue 600
     };
 
+    // ?? FORMATEADOR INTELIGENTE DE CANTIDADES
+    const formatQuantity = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? '0' : num.toString();
+    };
+
+    // ?? FIX ENCODING: Textos sanitizados sin acentos
     // 1. ENCABEZADO FISCAL
     doc.setFillColor(...colors.header);
     doc.rect(0, 0, pageWidth, 30, 'F');
@@ -30,14 +46,18 @@ export const printKardexReport = (kardexProduct, kardexHistory, bcvRate) => {
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`CONTROL DE MOVIMIENTOS Y EXISTENCIAS (EXPRESADO EN ${tenantConfig.primaryCurrency === 'Bs' ? 'BOLÃVARES' : tenantConfig.primaryCurrency})`, 14, 18);
+    // ?? CUMPLIMIENTO BIMONETARIO EXPL¨ªCITO
+    doc.text(`CONTROL DE MOVIMIENTOS Y EXISTENCIAS (EXPRESADO EN Bs Y DIVISA REFERENCIAL)`, 14, 18);
 
-    // Datos de la Empresa y Tasa (DINÃMICO)
+    // Sanitizar Raz¨®n Social
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Datos de la Empresa y Tasa (DIN¨¢MICO)
     doc.setFontSize(9);
-    doc.text(`RIF: ${tenantConfig.companyDocument}`, pageWidth - 14, 10, { align: 'right' });
-    doc.text(`RazÃ³n Social: ${tenantConfig.companyName}`, pageWidth - 14, 15, { align: 'right' });
-    doc.text(`EmisiÃ³n: ${new Date().toLocaleString('es-VE')}`, pageWidth - 14, 20, { align: 'right' });
-    doc.text(`Tasa de Cambio Base: ${tenantConfig.primaryCurrency} ${formatBs(bcvRate)}`, pageWidth - 14, 25, { align: 'right' });
+    doc.text(`RIF: ${finalCompanyDocument}`, pageWidth - 14, 10, { align: 'right' });
+    doc.text(`Razon Social: ${safeName}`, pageWidth - 14, 15, { align: 'right' });
+    doc.text(`Emision: ${new Date().toLocaleString('es-VE')}`, pageWidth - 14, 20, { align: 'right' });
+    doc.text(`Tasa de Cambio Base: Bs ${formatBs(bcvRate)}`, pageWidth - 14, 25, { align: 'right' });
 
     // 2. DATOS DEL PRODUCTO
     doc.setTextColor(0, 0, 0);
@@ -45,61 +65,77 @@ export const printKardexReport = (kardexProduct, kardexHistory, bcvRate) => {
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(14, 35, pageWidth - 28, 20, 2, 2, 'FD');
 
+    // Sanitizar nombre de producto
+    const cleanProductName = kardexProduct.name ? kardexProduct.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : 'N/A';
+    const cleanCategory = kardexProduct.category ? kardexProduct.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
+
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`PRODUCTO: ${kardexProduct.name.toUpperCase()}`, 20, 42);
+    doc.text(`PRODUCTO: ${cleanProductName}`, 20, 42);
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`CÃ“DIGO: ${kardexProduct.barcode || 'S/C'}`, 20, 48);
-    doc.text(`CATEGORÃA: ${kardexProduct.category || 'General'}`, 20, 52);
+    doc.text(`CODIGO: ${kardexProduct.barcode || 'S/C'}`, 20, 48);
+    doc.text(`CATEGORIA: ${cleanCategory}`, 20, 52);
 
-    const stockActual = kardexProduct.stock;
+    const stockActual = parseFloat(kardexProduct.stock) || 0;
     const costoUnitRef = parseFloat(kardexProduct.price_usd);
     const costoUnitBs = costoUnitRef * bcvRate;
     const valorTotalBs = stockActual * costoUnitBs;
+    
+    // ?? UX PRO: Extracci¨®n y normalizaci¨®n de la unidad de medida real
+    let unitDisplay = (kardexProduct.unit_measure || 'UND').toUpperCase().trim();
+    if (unitDisplay === 'KILO' || unitDisplay === 'KILOGRAMO') unitDisplay = 'KG';
+    else if (unitDisplay === 'LITRO') unitDisplay = 'LT';
+    else if (unitDisplay === 'UNIDAD') unitDisplay = 'UND';
 
-    doc.text(`EXISTENCIA: ${stockActual} UND`, 120, 48);
-    doc.text(`COSTO UNITARIO: ${tenantConfig.primaryCurrency} ${formatBs(costoUnitBs)}`, 120, 52);
+    doc.text(`EXISTENCIA: ${formatQuantity(stockActual)} ${unitDisplay}`, 120, 48);
+    doc.text(`COSTO UNITARIO: Bs ${formatBs(costoUnitBs)}`, 120, 52);
 
     doc.setFont('helvetica', 'bold');
-    doc.text(`VALOR TOTAL (${tenantConfig.primaryCurrency}): ${tenantConfig.primaryCurrency} ${formatBs(valorTotalBs)}`, 200, 48);
+    doc.text(`VALOR TOTAL (Bs): Bs ${formatBs(valorTotalBs)}`, 200, 48);
 
     doc.setTextColor(...colors.blue);
     doc.setFontSize(8);
     doc.text(`(Ref. Total: $${formatUSD(stockActual * costoUnitRef)})`, 200, 52);
     doc.setTextColor(0, 0, 0);
 
-    // 3. TABLA ANALÃTICA
+    // 3. TABLA ANAL¨ªTICA (Consumiendo el array invertido: sortedHistory)
     autoTable(doc, {
         startY: 60,
         head: [[
             'FECHA', 'DOC. REF', 'CONCEPTO', 
             'TIPO', 'CANT',
-            `COSTO UNIT (${tenantConfig.primaryCurrency})`, `TOTAL OP (${tenantConfig.primaryCurrency})`, 
-            `TOTAL OP (${tenantConfig.secondaryCurrency})`, 
+            `COSTO UNIT (Bs)`, `TOTAL OP (Bs)`, 
+            `TOTAL OP (Ref)`, 
             'SALDO'
         ]],
-        body: kardexHistory.map(mov => {
+        body: sortedHistory.map(mov => {
             let costRef = parseFloat(mov.cost_usd);
             if (isNaN(costRef) || costRef === 0) {
                 costRef = parseFloat(kardexProduct.price_usd) || 0;
             }
 
+            const movQty = parseFloat(mov.quantity) || 0;
+            const newStock = parseFloat(mov.new_stock) || 0;
+
             const costBs = costRef * bcvRate;
-            const totalRef = costRef * mov.quantity;
+            const totalRef = costRef * movQty;
             const totalBs = totalRef * bcvRate;
+            
+            // Limpiar concepto para evitar caracteres raros
+            const cleanReason = mov.reason ? mov.reason.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/_/g, ' ') : 'MOVIMIENTO';
 
             return [
                 new Date(mov.created_at).toLocaleDateString('es-VE'),
                 mov.document_ref || '-',
-                mov.reason ? mov.reason.replace(/_/g, ' ') : 'MOVIMIENTO',
+                cleanReason,
                 mov.type === 'IN' ? 'ENTRADA' : 'SALIDA',
-                mov.quantity,
+                formatQuantity(movQty), 
                 formatBs(costBs),
                 formatBs(totalBs),
                 formatUSD(totalRef),
-                mov.new_stock
+                formatQuantity(newStock) 
             ];
         }),
         styles: { fontSize: 8, cellPadding: 2, valign: 'middle' },
@@ -126,24 +162,49 @@ export const printKardexReport = (kardexProduct, kardexHistory, bcvRate) => {
         }
     });
 
-    // 4. PIE DE PÃGINA LEGAL
+    // 4. PIE DE P¨¢GINA LEGAL
     const finalY = doc.lastAutoTable.finalY + 10;
     doc.setFontSize(7);
     doc.setTextColor(100);
 
-    doc.text(`NOTA: Los valores en ${tenantConfig.primaryCurrency === 'Bs' ? 'BolÃ­vares' : tenantConfig.primaryCurrency} se calculan en base a la tasa de cambio vigente a la fecha de emisiÃ³n de este reporte.`, 14, finalY);
+    doc.text(`NOTA: Los valores en Bolivares se calculan en base a la tasa de cambio vigente a la fecha de emision de este reporte.`, 14, finalY);
     doc.text("BASE LEGAL: Art. 177 Reglamento ISLR (Sistema de Inventarios Permanentes) y Providencia Administrativa SNAT/2011/0071.", 14, finalY + 4);
 
     doc.setDrawColor(0, 0, 0);
     doc.line(200, finalY + 15, 270, finalY + 15);
     doc.text("Conformado Por (Firma y Sello)", 220, finalY + 20);
-
-    doc.save(`Kardex_Valorizado_${kardexProduct.name.replace(/\s+/g, '_')}.pdf`);
+    
+    // Sanitizar nombre para el archivo
+    const safeFileName = cleanProductName.replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`Kardex_Valorizado_${safeFileName}.pdf`);
 };
 
-// --- 1. FUNCIÃ“N DE REPORTE DE AUDITORÃA (MARCA BLANCA) ---
-export const printInventoryAuditPDF = (products, bcvRate) => {
-    if (!products || products.length === 0) return Swal.fire('VacÃ­o', 'No hay datos de inventario para generar el reporte.', 'info');
+// --- 1. FUNCI¨®N DE REPORTE DE AUDITOR¨ªA (MARCA BLANCA, FILTRO LEGAL Y ORDENAMIENTO) ---
+export const printInventoryAuditPDF = (products, bcvRate, userIdentity = null) => {
+    
+    // ?? 1. FILTRO LEGAL Y UX: Solo reflejar mercanc¨ªa con stock > 0 y excluir SERVICIOS (intangibles)
+    let existingProducts = products.filter(p => parseFloat(p.stock) > 0 && !p.is_service);
+
+    if (!existingProducts || existingProducts.length === 0) {
+        return Swal.fire('Sin Existencias', 'No hay productos con stock positivo para generar el reporte de valorizacion.', 'info');
+    }
+
+    // ?? 2. ORDEN LEGAL VENEZOLANO: Alfab¨¦ticamente por Categor¨ªa, luego por Nombre
+    existingProducts.sort((a, b) => {
+        const catA = (a.category || '').toUpperCase();
+        const catB = (b.category || '').toUpperCase();
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    // ?? 3. FASE MARCA BLANCA
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
 
     const doc = new jsPDF('l', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -155,40 +216,47 @@ export const printInventoryAuditPDF = (products, bcvRate) => {
         bg: [241, 245, 249]      
     };
 
+    const formatQuantity = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? '0' : num.toString();
+    };
+
+    // FIX ENCODING: Textos limpios sin acentos
     doc.setFillColor(...colors.header);
     doc.rect(0, 0, pageWidth, 35, 'F');
 
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.text("REPORTE DE VALORIZACIÃ“N Y EXISTENCIAS", 14, 12);
+    doc.text("REPORTE DE VALORIZACION Y EXISTENCIAS", 14, 12);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text("CONTROL DE INVENTARIO FÃSICO", 14, 18);
+    doc.text("CONTROL DE INVENTARIO FISICO (EXCLUYE STOCK AGOTADO Y SERVICIOS)", 14, 18);
 
+    // Sanitizar Raz¨®n Social
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
     doc.setFontSize(9);
-    doc.text(`RIF: ${tenantConfig.companyDocument}`, 14, 24); 
-    doc.text(`RazÃ³n Social: ${tenantConfig.companyName}`, 14, 29); 
+    doc.text(`RIF: ${finalCompanyDocument}`, 14, 24); 
+    doc.text(`Razon Social: ${safeName}`, 14, 29); 
 
     const dateStr = new Date().toLocaleString('es-VE');
     const rateStr = formatBs(bcvRate);
 
     doc.text(`Fecha de Corte: ${dateStr}`, pageWidth - 14, 12, { align: 'right' });
-    doc.text(`Tasa de Cambio BCV: ${tenantConfig.primaryCurrency} ${rateStr}`, pageWidth - 14, 18, { align: 'right' });
-    doc.text(`Expresado en: ${tenantConfig.primaryCurrency} y Divisa Referencial (${tenantConfig.secondaryCurrency})`, pageWidth - 14, 24, { align: 'right' });
+    doc.text(`Tasa de Cambio BCV: Bs ${rateStr}`, pageWidth - 14, 18, { align: 'right' });
+    doc.text(`Expresado en: Bs y Divisa Referencial (Ref)`, pageWidth - 14, 24, { align: 'right' });
 
-    let totalStock = 0;
     let totalValueUSD = 0;
     let totalValueVES = 0;
 
-    products.forEach(item => {
-        const stock = parseInt(item.stock) || 0;
+    existingProducts.forEach(item => {
+        const stock = parseFloat(item.stock) || 0;
         const price = parseFloat(item.price_usd) || 0;
         const totalUSD = stock * price;
         const totalVES = totalUSD * bcvRate;
 
-        totalStock += stock;
         totalValueUSD += totalUSD;
         totalValueVES += totalVES;
     });
@@ -200,50 +268,53 @@ export const printInventoryAuditPDF = (products, bcvRate) => {
 
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
-    doc.text("ITEMS TOTALES", 30, startYTotals + 6, { align: 'center' });
+    doc.text("TOTAL PRODUCTOS", 60, startYTotals + 6, { align: 'center' });
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${products.length}`, 30, startYTotals + 14, { align: 'center' });
+    doc.text(`${existingProducts.length}`, 60, startYTotals + 14, { align: 'center' });
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text("UNIDADES EN STOCK", 80, startYTotals + 6, { align: 'center' });
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${totalStock}`, 80, startYTotals + 14, { align: 'center' });
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`VALOR TOTAL (${tenantConfig.primaryCurrency})`, 150, startYTotals + 6, { align: 'center' });
+    doc.text(`VALOR TOTAL (Bs)`, 148, startYTotals + 6, { align: 'center' });
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...colors.accent);
-    doc.text(`${tenantConfig.primaryCurrency} ${formatBs(totalValueVES)}`, 150, startYTotals + 14, { align: 'center' });
+    doc.text(`Bs ${formatBs(totalValueVES)}`, 148, startYTotals + 14, { align: 'center' });
 
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`VALOR TOTAL (${tenantConfig.secondaryCurrency})`, 230, startYTotals + 6, { align: 'center' });
+    doc.text(`VALOR TOTAL (Ref)`, 236, startYTotals + 6, { align: 'center' });
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 86, 179);
-    doc.text(`Ref ${formatUSD(totalValueUSD)}`, 230, startYTotals + 14, { align: 'center' });
+    doc.text(`Ref ${formatUSD(totalValueUSD)}`, 236, startYTotals + 14, { align: 'center' });
 
     autoTable(doc, {
         startY: startYTotals + 25,
-        head: [['CÃ“DIGO', 'DESCRIPCIÃ“N DEL PRODUCTO', 'CATEGORÃA', 'STOCK', `COSTO UNIT (${tenantConfig.primaryCurrency})`, `TOTAL (${tenantConfig.primaryCurrency})`, `TOTAL (${tenantConfig.secondaryCurrency})`]],
-        body: products.map(item => {
-            const stock = parseInt(item.stock) || 0;
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION DEL PRODUCTO', 'CANTIDAD', `COSTO UNIT (Bs)`, `TOTAL (Bs)`, `TOTAL (Ref)`]],
+        body: existingProducts.map(item => {
+            const stock = parseFloat(item.stock) || 0;
             const price = parseFloat(item.price_usd) || 0;
             const totalUSD = stock * price;
             const totalVES = totalUSD * bcvRate;
             const unitVES = price * bcvRate;
+            
+            // UX PRO: Normalizaci¨®n de la unidad de medida (Kilo -> KG)
+            let unitMeasure = (item.unit_measure || 'UND').toUpperCase().trim();
+            if (unitMeasure === 'KILO' || unitMeasure === 'KILOGRAMO') unitMeasure = 'KG';
+            else if (unitMeasure === 'LITRO') unitMeasure = 'LT';
+            else if (unitMeasure === 'UNIDAD') unitMeasure = 'UND';
+
+            // Sanitizamos para proteger el PDF de caracteres extra?os
+            const cleanName = item.name ? item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 45) : 'N/A';
+            const cleanCat = item.category ? item.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
 
             return [
                 item.barcode || `INT-${item.id}`,
-                item.name.substring(0, 45),
-                item.category || 'General',
-                stock,
+                cleanCat, // Intercambiado para mostrar la categor¨ªa primero seg¨²n el orden visual l¨®gico
+                cleanName,
+                `${formatQuantity(stock)} ${unitMeasure}`,
                 formatBs(unitVES),
                 formatBs(totalVES),
                 formatUSD(totalUSD)
@@ -252,7 +323,9 @@ export const printInventoryAuditPDF = (products, bcvRate) => {
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: colors.header, textColor: 255, fontStyle: 'bold', halign: 'center' },
         columnStyles: {
-            0: { cellWidth: 25 },
+            0: { cellWidth: 22 },
+            1: { cellWidth: 35 }, // Categor¨ªa
+            2: { cellWidth: 'auto' }, // Nombre
             3: { halign: 'center', fontStyle: 'bold' },
             4: { halign: 'right' },
             5: { halign: 'right', fontStyle: 'bold' },
@@ -264,21 +337,74 @@ export const printInventoryAuditPDF = (products, bcvRate) => {
     const finalY = doc.lastAutoTable.finalY + 10;
     doc.setFontSize(7);
     doc.setTextColor(150);
-    doc.text("Este reporte refleja la valorizaciÃ³n del inventario segÃºn los costos registrados en el sistema al momento de su emisiÃ³n.", 14, finalY);
-    doc.text("Base Legal: Art. 177 Reglamento de la Ley de ISLR (ValuaciÃ³n de Inventarios) y Providencia Administrativa 0071.", 14, finalY + 4);
+    doc.text("Este reporte refleja la valorizacion del inventario fisico segun los costos registrados en el sistema al momento de su emision.", 14, finalY);
+    doc.text("Base Legal: Art. 177 Reglamento de la Ley de ISLR (Valuacion de Inventarios) y Providencia Administrativa 0071.", 14, finalY + 4);
 
     doc.setDrawColor(200, 200, 200);
     doc.line(200, finalY + 15, 270, finalY + 15);
     doc.text("Revisado por (Firma y Sello)", 215, finalY + 19);
 
-    doc.save(`Auditoria_Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`Auditoria_Inventario_Valorizado_${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-// --- FUNCIÃ“N: REPORTE DE TOMA DE INVENTARIO FÃSICO (MARCA BLANCA) ---
-export const printPhysicalCountReport = (inventoryFilteredData, products) => {
-    const dataToPrint = inventoryFilteredData.length > 0 ? inventoryFilteredData : products;
-    if (!dataToPrint || dataToPrint.length === 0) return Swal.fire('Error', 'No hay datos para generar el acta', 'warning');
+// --- FUNCI¨®N: REPORTE DE TOMA DE INVENTARIO F¨ªSICO (MARCA BLANCA / UX PRO / LEGAL VZLA) ---
+export const printPhysicalCountReport = (inventoryFilteredData, products, userIdentity = null) => {
+    // ?? 1. OBTENCI¨®N DE DATOS BASE
+    const rawData = inventoryFilteredData && inventoryFilteredData.length > 0 ? inventoryFilteredData : products;
+    if (!rawData || rawData.length === 0) return Swal.fire('Error', 'No hay datos para generar el acta', 'warning');
 
+    // ?? 2. LIMPIEZA, CRUCE DE DATOS Y NORMALIZACI¨®N DE UNIDADES
+    let cleanData = [];
+
+    rawData.forEach(item => {
+        // A. Eliminar "Filas Fantasmas" (Subtotales SQL que vienen sin nombre)
+        if (!item.name || item.name.trim() === '') return;
+
+        // B. Cruzar con el Inventario Maestro (garantiza tener is_service y unit_measure correctos)
+        const masterItem = products.find(p => p.id === item.id) || item;
+
+        // C. Excluir Servicios (Ej: "Avance de Efectivo" no se puede contar f¨ªsicamente)
+        if (masterItem.is_service) return;
+
+        // D. Normalizar la unidad para que se vea profesional en el PDF (Kilo -> KG)
+        let unitDisplay = (masterItem.unit_measure || 'UND').toUpperCase().trim();
+        if (unitDisplay === 'KILO' || unitDisplay === 'KILOGRAMO') unitDisplay = 'KG';
+        else if (unitDisplay === 'LITRO') unitDisplay = 'LT';
+        else if (unitDisplay === 'UNIDAD') unitDisplay = 'UND';
+
+        cleanData.push({
+            ...item,
+            category: masterItem.category || item.category || 'General',
+            name: masterItem.name || item.name,
+            unitDisplay: unitDisplay,
+            barcode: masterItem.barcode || item.barcode
+        });
+    });
+
+    // ?? 3. ORDEN LEGAL VENEZOLANO: Alfab¨¦ticamente por Categor¨ªa, luego por Nombre
+    cleanData.sort((a, b) => {
+        const catA = (a.category || '').toUpperCase();
+        const catB = (b.category || '').toUpperCase();
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    if (cleanData.length === 0) {
+        return Swal.fire('Atenci¨®n', 'No hay productos f¨ªsicos v¨¢lidos para contar (se excluyeron los servicios).', 'info');
+    }
+
+    // ?? 4. FASE MARCA BLANCA: Identidad corporativa del inquilino activo
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
+
+    // =========================================================
+    // A PARTIR DE AQU¨ª: TU DISE?O ORIGINAL EXACTO E INTACTO
+    // =========================================================
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
 
@@ -293,31 +419,42 @@ export const printPhysicalCountReport = (inventoryFilteredData, products) => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text("ACTA DE TOMA DE INVENTARIO FÃSICO", 14, 12);
+    
+    // FIX ENCODING: Textos limpios sin acentos
+    doc.text("ACTA DE TOMA DE INVENTARIO FISICO", 14, 12);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text("INSTRUMENTO DE CONTEO CIEGO (AUDITORÃA)", 14, 18);
+    doc.text("INSTRUMENTO DE CONTEO CIEGO (AUDITORIA)", 14, 18);
 
+    // Sanitizar Raz¨®n Social
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
     doc.setFontSize(9);
-    doc.text(`RIF: ${tenantConfig.companyDocument}`, 14, 24);
-    doc.text(`RazÃ³n Social: ${tenantConfig.companyName}`, 14, 28);
+    doc.text(`RIF: ${finalCompanyDocument}`, 14, 24);
+    doc.text(`Razon Social: ${safeName}`, 14, 28);
 
     const fecha = new Date().toLocaleDateString('es-VE');
-    doc.text(`Fecha de EmisiÃ³n: ${fecha}`, pageWidth - 14, 12, { align: 'right' });
+    doc.text(`Fecha de Emision: ${fecha}`, pageWidth - 14, 12, { align: 'right' });
     doc.text("Responsable de Conteo: ___________________", pageWidth - 14, 18, { align: 'right' });
     doc.text("Auditor Supervisor: ___________________", pageWidth - 14, 24, { align: 'right' });
 
     autoTable(doc, {
         startY: 35,
-        head: [['CÃ“DIGO', 'CATEGORÃA', 'DESCRIPCIÃ“N DEL PRODUCTO', 'UNIDAD', 'CONTEO REAL (FÃSICO)']],
-        body: dataToPrint.map(item => [
-            item.barcode || `INT-${item.id}`,
-            item.category || 'General',
-            item.name,
-            'UND',
-            ''
-        ]),
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION DEL PRODUCTO', 'UNIDAD', 'CONTEO REAL (FISICO)']],
+        body: cleanData.map(item => {
+            // Sanitizamos textos din¨¢micos desde la BD para la tabla
+            const cleanName = item.name ? item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 45) : 'N/A';
+            const cleanCat = item.category ? item.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
+            
+            return [
+                item.barcode || `INT-${item.id}`,
+                cleanCat,
+                cleanName,
+                item.unitDisplay, // ?? Muestra la unidad real saneada (KG, LT, UND)
+                ''
+            ];
+        }),
         styles: { fontSize: 9, cellPadding: 3, valign: 'middle', lineColor: [200, 200, 200], lineWidth: 0.1 },
         headStyles: {
             fillColor: colors.header,
@@ -329,10 +466,11 @@ export const printPhysicalCountReport = (inventoryFilteredData, products) => {
             0: { cellWidth: 25 },
             1: { cellWidth: 30 },
             2: { cellWidth: 'auto' },
-            3: { cellWidth: 20, halign: 'center' },
+            3: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
             4: { cellWidth: 40, minCellHeight: 10 }
         },
         didDrawCell: function (data) {
+            // Mantiene tu l¨®gica original de dibujo de l¨ªnea
             if (data.section === 'body' && data.column.index === 4) {
                 const x = data.cell.x;
                 const y = data.cell.y;
@@ -350,8 +488,8 @@ export const printPhysicalCountReport = (inventoryFilteredData, products) => {
     doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
 
-    doc.text("Certifico que he realizado el conteo fÃ­sico de los artÃ­culos listados, verificando su existencia real en los almacenes.", 14, finalY);
-    doc.text(`Este documento es propiedad exclusiva de ${tenantConfig.companyName} y sirve de soporte para el cierre contable.`, 14, finalY + 4);
+    doc.text("Certifico que he realizado el conteo fisico de los articulos listados, verificando su existencia real en los almacenes.", 14, finalY);
+    doc.text(`Este documento es propiedad exclusiva de ${safeName} y sirve de soporte para el cierre contable.`, 14, finalY + 4);
 
     if (finalY < 250) {
         doc.line(40, finalY + 20, 90, finalY + 20);
@@ -682,39 +820,83 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
     }
 };
 
-// --- FUNCIÃ“N INTELIGENTE PARA EXPORTAR CSV (MARCA BLANCA) ---
+// --- FUNCI¨®N INTELIGENTE PARA EXPORTAR EXCEL NATIVO (MARCA BLANCA / UX PRO / ANCHOS AMPLIOS) ---
 export const downloadCSV = (data, fileName, bcvRate) => {
-    if (!data || data.length === 0) return Swal.fire('VacÃ­o', 'No hay datos para exportar', 'info');
+    if (!data || data.length === 0) return Swal.fire('Vac¨ªo', 'No hay datos para exportar', 'info');
 
     const first = data[0];
     const isInventory = first.hasOwnProperty('stock') && first.hasOwnProperty('name');
     const isDailySummary = first.hasOwnProperty('sale_date') && first.hasOwnProperty('total_usd');
     const isKardex = first.hasOwnProperty('new_stock') && first.hasOwnProperty('reason');
 
+    let processedData = [...data];
     let orderedHeaders = [];
     let rowMapper = null;
 
+    const formatExcel = (num, decimals = 2) => {
+        const parsed = parseFloat(num);
+        return isNaN(parsed) ? '0,00' : parsed.toFixed(decimals).replace('.', ',');
+    };
+
     if (isInventory) {
-        orderedHeaders = ["ID", "Producto", "CategorÃ­a", "Estatus", "Stock", "Costo Ref", `Costo ${tenantConfig.primaryCurrency}`, "Valor Total Ref", `Valor Total ${tenantConfig.primaryCurrency}`];
-        rowMapper = (row) => ({
-            "ID": row.id,
-            "Producto": row.name,
-            "CategorÃ­a": row.category,
-            "Estatus": row.status,
-            "Stock": row.stock,
-            "Costo Ref": parseFloat(row.price_usd).toFixed(2),
-            [`Costo ${tenantConfig.primaryCurrency}`]: (parseFloat(row.price_usd) * bcvRate).toFixed(2),
-            "Valor Total Ref": parseFloat(row.total_value_usd || 0).toFixed(2),
-            [`Valor Total ${tenantConfig.primaryCurrency}`]: (parseFloat(row.total_value_usd || 0) * bcvRate).toFixed(2)
+        processedData = processedData.filter(p => {
+            const stock = parseFloat(p.stock) || 0;
+            const isServiceFlag = p.is_service === true;
+            const categoryText = (p.category || '').toUpperCase();
+            const nameText = (p.name || '').toUpperCase();
+
+            if (stock <= 0) return false;
+            if (isServiceFlag) return false;
+            if (categoryText.includes('SERVICIO')) return false;
+            if (nameText.includes('AVANCE DE EFECTIVO')) return false;
+
+            return true;
         });
+
+        if (processedData.length === 0) {
+            return Swal.fire('Atenci¨®n', 'No hay mercanc¨ªa f¨ªsica con stock para exportar.', 'info');
+        }
+
+        processedData.sort((a, b) => {
+            const catA = (a.category || '').toUpperCase();
+            const catB = (b.category || '').toUpperCase();
+            if (catA < catB) return -1;
+            if (catA > catB) return 1;
+            return (a.name || '').toUpperCase().localeCompare((b.name || '').toUpperCase());
+        });
+
+        orderedHeaders = ["CODIGO", "CATEGORIA", "PRODUCTO", "UNIDAD", "CANTIDAD", "COSTO UNIT (Ref)", `COSTO UNIT (${tenantConfig.primaryCurrency})`, "TOTAL (Ref)", `TOTAL (${tenantConfig.primaryCurrency})`];
+        
+        rowMapper = (row) => {
+            let unitMeasure = (row.unit_measure || 'UND').toUpperCase().trim();
+            if (unitMeasure === 'KILO' || unitMeasure === 'KILOGRAMO') unitMeasure = 'KG';
+            else if (unitMeasure === 'LITRO') unitMeasure = 'LT';
+            else if (unitMeasure === 'UNIDAD') unitMeasure = 'UND';
+
+            const stock = parseFloat(row.stock) || 0;
+            const priceUsd = parseFloat(row.price_usd) || 0;
+            const totalUsd = stock * priceUsd;
+
+            return {
+                "CODIGO": row.barcode || `INT-${row.id}`,
+                "CATEGORIA": row.category ? row.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General',
+                "PRODUCTO": row.name ? row.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '',
+                "UNIDAD": unitMeasure,
+                "CANTIDAD": formatExcel(stock, 3),
+                "COSTO UNIT (Ref)": formatExcel(priceUsd),
+                [`COSTO UNIT (${tenantConfig.primaryCurrency})`]: formatExcel(priceUsd * bcvRate),
+                "TOTAL (Ref)": formatExcel(totalUsd),
+                [`TOTAL (${tenantConfig.primaryCurrency})`]: formatExcel(totalUsd * bcvRate)
+            };
+        };
 
     } else if (isDailySummary) {
         orderedHeaders = ["Fecha", "Transacciones", "Total Recaudado (Ref)", `Total Recaudado (${tenantConfig.primaryCurrency})`];
         rowMapper = (row) => ({
-            "Fecha": new Date(row.sale_date).toLocaleDateString(),
+            "Fecha": new Date(row.sale_date).toLocaleDateString('es-VE'),
             "Transacciones": row.tx_count,
-            "Total Recaudado (Ref)": parseFloat(row.total_usd).toFixed(2),
-            [`Total Recaudado (${tenantConfig.primaryCurrency})`]: parseFloat(row.total_ves).toFixed(2)
+            "Total Recaudado (Ref)": formatExcel(row.total_usd),
+            [`Total Recaudado (${tenantConfig.primaryCurrency})`]: formatExcel(row.total_ves)
         });
 
     } else if (isKardex) {
@@ -725,43 +907,90 @@ export const downloadCSV = (data, fileName, bcvRate) => {
             "Tipo": row.type === 'IN' ? 'ENTRADA' : 'SALIDA',
             "Concepto": row.reason ? row.reason.replace(/_/g, ' ') : '-',
             "Referencia": row.document_ref || '-',
-            "Costo Lote ($)": row.cost_usd ? parseFloat(row.cost_usd).toFixed(2) : '-',
-            "Cantidad": row.quantity,
-            "Saldo Final": row.new_stock
+            "Costo Lote ($)": row.cost_usd ? formatExcel(row.cost_usd) : '-',
+            "Cantidad": formatExcel(row.quantity, 3),
+            "Saldo Final": formatExcel(row.new_stock, 3)
         });
 
     } else {
-        orderedHeaders = ["Nro Factura", "Fecha", "Cliente", "Documento", "Ãtems", "Estado", "Pago", "Total Ref", `Total ${tenantConfig.primaryCurrency}`];
+        orderedHeaders = ["Nro Factura", "Fecha", "Cliente", "Documento", "Items", "Estado", "Pago", "Total Ref", `Total ${tenantConfig.primaryCurrency}`];
         rowMapper = (row) => ({
             "Nro Factura": row.id || row.sale_id,
             "Fecha": new Date(row.created_at).toLocaleString('es-VE'),
             "Cliente": row.full_name || row.client_name || 'Consumidor Final',
             "Documento": row.client_id || row.id_number || 'N/A',
-            "Ãtems": row.items_comprados || 'Sin detalle',
+            "Items": row.items_comprados || 'Sin detalle',
             "Estado": row.status,
             "Pago": row.payment_method,
-            "Total Ref": parseFloat(row.total_usd).toFixed(2),
-            [`Total ${tenantConfig.primaryCurrency}`]: parseFloat(row.total_ves).toFixed(2)
+            "Total Ref": formatExcel(row.total_usd),
+            [`Total ${tenantConfig.primaryCurrency}`]: formatExcel(row.total_ves)
         });
     }
 
-    const csvContent = [
-        orderedHeaders.join(';'),
-        ...data.map(originalRow => {
-            const mappedRow = rowMapper(originalRow);
-            return orderedHeaders.map(header => {
-                let value = mappedRow[header];
-                if (value === null || value === undefined) value = '';
-                return String(value).replace(/(\r\n|\n|\r)/gm, " ").replace(/;/g, ",");
-            }).join(';');
-        })
-    ].join('\r\n');
+    // ?? CONSTRUCCI¨®N DE TABLA HTML NATIVA (Fuerza anchos amplios y evita recortes en Excel)
+    let htmlTable = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta charset="utf-8">
+            <style>
+                table { border-collapse: collapse; width: 100%; font-family: Calibri, sans-serif; font-size: 11pt; }
+                th { background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; padding: 8px 12px; border: 1px solid #cbd5e1; }
+                td { padding: 6px 10px; border: 1px solid #cbd5e1; vertical-align: middle; }
+                .text { mso-number-format:"\\@"; }
+                .number { mso-number-format:"#,##0.00"; text-align: right; }
+                /* Anchos generosos predeterminados para que no salgan cortadas las descripciones o categor¨ªas */
+                .col-codigo { width: 120px; text-align: center; }
+                .col-categoria { width: 180px; }
+                .col-producto { width: 320px; }
+                .col-unidad { width: 90px; text-align: center; }
+                .col-cantidad { width: 110px; text-align: right; }
+                .col-monto { width: 140px; text-align: right; }
+            </style>
+        </head>
+        <body>
+            <table>
+                <thead>
+                    <tr>
+                        ${orderedHeaders.map(h => `<th>${h}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+    `;
 
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    processedData.forEach(originalRow => {
+        const mappedRow = rowMapper(originalRow);
+        htmlTable += "<tr>";
+        orderedHeaders.forEach((header, idx) => {
+            let value = mappedRow[header];
+            if (value === null || value === undefined) value = '';
+            
+            // Asignamos clases de ancho seg¨²n la columna
+            let cssClass = "text";
+            if (idx === 0) cssClass += " col-codigo";
+            else if (idx === 1) cssClass += " col-categoria";
+            else if (idx === 2) cssClass += " col-producto";
+            else if (idx === 3) cssClass += " col-unidad";
+            else if (idx === 4) cssClass += " col-cantidad";
+            else if (idx >= 5) cssClass += " number col-monto";
+
+            htmlTable += `<td class="${cssClass}">${String(value)}</td>`;
+        });
+        htmlTable += "</tr>";
+    });
+
+    htmlTable += `
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+
+    // Cambiamos la extensi¨®n a .xls para que Excel lo abra de forma nativa con los anchos y estilos aplicados
+    const blob = new Blob([htmlTable], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `${fileName}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `${fileName}_${new Date().toISOString().split('T')[0]}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -887,10 +1116,14 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
 
             const cleanName = item.name.replace(/\[CAP:.*?\]/i, '').trim();
             
+            // ðŸš¨ UX PRO BLINDAJE: Limpieza nativa de decimales innecesarios (Ej: 10.000 -> 10 | 0.350 -> 0.35)
+            // Esto asegura que la vista impresa sea impecable sin afectar la contabilidad.
+            const displayQty = parseFloat(qty).toString();
+
             // HTML para Ticket TÃ©rmico
             itemsTicketHTML += `
             <div class="item-row">
-                <div class="col-qty">${qty}</div>
+                <div class="col-qty">${displayQty}</div>
                 <div class="col-desc">${cleanName.substring(0, 30)}${taxMark}</div>
                 <div class="col-price">${formatBs(subtotalItemBs)}</div>
             </div>`;
@@ -899,7 +1132,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
             itemsFormaLibreHTML += `
             <tr>
                 <td style="text-align: left;">${cleanName.substring(0, 45)}${taxMark}</td>
-                <td style="text-align: center;">${qty}</td>
+                <td style="text-align: center;">${displayQty}</td>
                 <td style="text-align: right;">${formatBs(priceUsd * rate)}</td>
                 <td style="text-align: right;">${formatBs(subtotalItemBs)}</td>
             </tr>`;
@@ -984,13 +1217,13 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
         
     if (isFormaLibreMode && isFiscal && !isCredit) {
             
-            // ðŸ›¡ï¸ PUNTO 1: CALCE DINÃMICO (Configurable por el usuario para esquivar el membrete)
+            // ðŸ›¡ï¸?PUNTO 1: CALCE DINÃMICO (Configurable por el usuario para esquivar el membrete)
             const marginTopMM = configFiscalBrand.formaLibreMarginTop || brand.formaLibreMarginTop || 45; 
             const marginLeftMM = configFiscalBrand.formaLibreMarginLeft || brand.formaLibreMarginLeft || 10;
             const formSize = configFiscalBrand.printerPaperSize || brand.formaLibrePaperSize || 'half-letter';
             const pageHeight = formSize === 'letter' ? '279mm' : '140mm';
 
-            // ðŸ›¡ï¸ PUNTO 2: IDENTIFICACIÃ“N CON SERIE DINÃMICA BLINDADA
+            // ðŸ›¡ï¸?PUNTO 2: IDENTIFICACIÃ“N CON SERIE DINÃMICA BLINDADA
             let docSerie = configFiscalBrand.formaLibreSerie || brand.formaLibreSerie || 'SERIE - A';
             
             // 1. Rescate Seguro AsÃ­ncrono (Lee lo que inyectÃ³ el Modal temporalmente)
@@ -1015,7 +1248,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
                 }
             }
 
-            // ðŸ›¡ï¸ BLINDAJE DE FORMATO: Si solo nos dio una letra (Ej: "B"), lo convertimos a "SERIE - B"
+            // ðŸ›¡ï¸?BLINDAJE DE FORMATO: Si solo nos dio una letra (Ej: "B"), lo convertimos a "SERIE - B"
             const formattedSerie = docSerie.length === 1 ? `SERIE - ${docSerie.toUpperCase()}` : docSerie;
 
             // ðŸš€ FIX UX APLICADO: Extraemos solo los nÃºmeros de forma segura
@@ -1105,7 +1338,7 @@ export const generateReceiptHTML = (saleId, customer, items, invoiceType = 'FISC
     // =====================================================================
     // ðŸš¨ RENDERIZADO 2: TICKET TÃ‰RMICO NORMAL (Control Interno / Imp. Fiscal)
     // =====================================================================
-    // ðŸ›¡ï¸ PUNTOS 1, 2, 3 y 4 APLICADOS AQUÃ PARA EL TICKET PEQUEÃ‘O
+    // ðŸ›¡ï¸?PUNTOS 1, 2, 3 y 4 APLICADOS AQUÃ PARA EL TICKET PEQUEÃ‘O
     const ticketPaperSize = configFiscalBrand.printerPaperSize || brand.printerPaperSize || '80mm';
     const is58mm = ticketPaperSize === '58mm';
     const finalCompanyName = brand.companyName || brand.tradeName || 'EMPRESA NO DEFINIDA';
@@ -1576,7 +1809,7 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...colors.primary);
-    doc.text(`Periodo: ${new Date(reportDateRange.start).toLocaleDateString()} â€” ${new Date(reportDateRange.end).toLocaleDateString()}`, 14, 38);
+    doc.text(`Periodo: ${new Date(reportDateRange.start).toLocaleDateString()} â€?${new Date(reportDateRange.end).toLocaleDateString()}`, 14, 38);
 
     doc.setFontSize(8);
     doc.setTextColor(...colors.lightText);
@@ -1731,4 +1964,1075 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
     }
 
     doc.save(`Reporte_Gerencial_${reportDateRange.start}.pdf`);
+};
+
+// =========================================================================
+// ?? 1. REPORTE DE REPOSICION Y STOCK CRITICO (BIMONETARIO / UX PRO / LEGAL)
+// =========================================================================
+export const printLowStockReportPDF = (allProducts, bcvRate, userIdentity = null) => {
+    
+    // ?? 1. FILTRADO: Garantizamos precios y excluimos intangibles (Servicios)
+    const lowStockProducts = allProducts.filter(p => {
+        const stock = parseFloat(p.stock) || 0;
+        return stock <= 10 && !p.is_service; 
+    });
+
+    if (!lowStockProducts || lowStockProducts.length === 0) {
+        return Swal.fire('Inventario Sano', 'No existen articulos en nivel critico de reposicion.', 'info');
+    }
+
+    // ?? 2. ORDEN LEGAL VENEZOLANO Y LOG¨ªSTICO: Alfab¨¦ticamente por Categor¨ªa, luego por Nombre
+    lowStockProducts.sort((a, b) => {
+        const catA = (a.category || '').toUpperCase();
+        const catB = (b.category || '').toUpperCase();
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    // ?? 3. FASE MARCA BLANCA
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
+
+    const doc = new jsPDF('p', 'mm', 'a4'); // Orientacion Vertical
+    const pageWidth = doc.internal.pageSize.width;
+
+    const colors = {
+        header: [30, 41, 59],
+        accent: [225, 29, 72], // Rose/Red alerta
+        bg: [248, 250, 252]
+    };
+
+    const formatQty = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? '0' : num.toString();
+    };
+
+    // Header Corporativo (Sin Acentos)
+    doc.setFillColor(...colors.header);
+    doc.rect(0, 0, pageWidth, 32, 'F');
+
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("REPORTE DE ARTICULOS CON STOCK BAJO", 14, 11);
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text("CONTROL DE QUIEBRE DE INVENTARIO Y REPOSICION", 14, 17);
+    
+    // Sanitizamos la Razon Social
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`RIF: ${finalCompanyDocument}  |  Razon Social: ${safeName}`, 14, 23);
+
+    const dateStr = new Date().toLocaleString('es-VE');
+    doc.setFontSize(8);
+    doc.text(`Emision: ${dateStr}`, pageWidth - 14, 11, { align: 'right' });
+    doc.text(`Tasa Base BCV: Bs ${formatBs(bcvRate)}`, pageWidth - 14, 17, { align: 'right' });
+    doc.text(`Expresado en: Bs y Divisa Referencial (Ref)`, pageWidth - 14, 23, { align: 'right' });
+
+    // Tarjeta de Resumen
+    const startY = 38;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, startY, pageWidth - 28, 16, 2, 2, 'S');
+
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("TOTAL ARTICULOS EN RIESGO", 35, startY + 5, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.accent);
+    doc.text(`${lowStockProducts.length}`, 35, startY + 12, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text("ESTADO OPERATIVO", 120, startY + 5, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text("REQUIERE ORDEN DE COMPRA", 120, startY + 12, { align: 'center' });
+
+    // Tabla de Productos Bimonetaria
+    autoTable(doc, {
+        startY: startY + 22,
+        // ?? UX PRO: Intercambiamos Categor¨ªa y Descripci¨®n para mayor orden visual
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION', 'EXISTENCIA', 'COSTO (Bs)', 'COSTO (Ref)', 'TOTAL (Bs)', 'TOTAL (Ref)']],
+        body: lowStockProducts.map(p => {
+            const stock = parseFloat(p.stock) || 0;
+            const priceUsd = parseFloat(p.price_usd) || 0;
+            const totalUSD = stock * priceUsd;
+            
+            const priceBs = priceUsd * bcvRate;
+            const totalBs = totalUSD * bcvRate;
+            
+            // UX PRO: Normalizaci¨®n de la unidad de medida (Kilo -> KG)
+            let unitMeasure = (p.unit_measure || 'UND').toUpperCase().trim();
+            if (unitMeasure === 'KILO' || unitMeasure === 'KILOGRAMO') unitMeasure = 'KG';
+            else if (unitMeasure === 'LITRO') unitMeasure = 'LT';
+            else if (unitMeasure === 'UNIDAD') unitMeasure = 'UND';
+
+            const cleanName = p.name ? p.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 30) : 'N/A';
+            const cleanCat = p.category ? p.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
+
+            return [
+                p.barcode || `INT-${p.id}`,
+                cleanCat,
+                cleanName,
+                `${formatQty(stock)} ${unitMeasure}`,
+                formatBs(priceBs),
+                formatUSD(priceUsd),
+                formatBs(totalBs),
+                formatUSD(totalUSD)
+            ];
+        }),
+        styles: { fontSize: 7.5, cellPadding: 2 }, 
+        headStyles: { fillColor: colors.header, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 25 }, // Asignamos ancho fijo a la Categor¨ªa
+            2: { cellWidth: 'auto' }, // La Descripci¨®n toma el espacio restante
+            3: { halign: 'center', fontStyle: 'bold', textColor: colors.accent },
+            4: { halign: 'right' }, 
+            5: { halign: 'right', textColor: [0, 86, 179] }, 
+            6: { halign: 'right', fontStyle: 'bold' }, 
+            7: { halign: 'right', fontStyle: 'bold', textColor: [0, 86, 179] }
+        },
+        alternateRowStyles: { fillColor: colors.bg }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Reporte generado para planificacion de compras segun existencias minimas de seguridad.", 14, finalY);
+    doc.text("Base Legal: Providencia Administrativa 0071 (SUNDDE) y control interno de valorizacion bimonetaria.", 14, finalY + 4);
+
+    doc.save(`Stock_Critico_Reposicion_${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+
+// =========================================================================
+// ?? 2. REPORTE DE CONTROL SANITARIO Y VENCIMIENTO DE LOTES (SACS / FEFO / UX PRO)
+// =========================================================================
+export const printBatchExpirationReportPDF = (products, bcvRate, userIdentity = null) => {
+    const batchRows = [];
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    products.forEach(prod => {
+        if (prod.is_perishable && parseFloat(prod.stock) > 0 && prod.expiration_date) {
+            const [year, month, day] = prod.expiration_date.split('-');
+            const expDate = new Date(year, month - 1, day);
+            
+            const diffTime = expDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            let status = 'VIGENTE';
+            if (diffDays < 0) status = 'VENCIDO';
+            else if (diffDays <= 30) status = 'CRITICO';
+            else if (diffDays <= 60) status = 'PRECAUCION';
+
+            // ?? UX PRO: Normalizaci¨®n de unidad (Kilo -> KG)
+            let unitMeasure = (prod.unit_measure || 'UND').toUpperCase().trim();
+            if (unitMeasure === 'KILO' || unitMeasure === 'KILOGRAMO') unitMeasure = 'KG';
+            else if (unitMeasure === 'LITRO') unitMeasure = 'LT';
+            else if (unitMeasure === 'UNIDAD') unitMeasure = 'UND';
+
+            batchRows.push({
+                id: prod.id,
+                name: prod.name,
+                category: prod.category || 'General',
+                unit: unitMeasure,
+                barcode: prod.barcode || `INT-${prod.id}`,
+                expiration_date: expDate.toLocaleDateString('es-VE'),
+                days_left: diffDays < 0 ? 0 : diffDays,
+                stock: parseFloat(prod.stock) || 0,
+                cost_usd: parseFloat(prod.price_usd) || 0,
+                status
+            });
+        }
+    });
+
+    if (batchRows.length === 0) {
+        return Swal.fire('Inventario Sano', 'No hay productos perecederos con riesgo de vencimiento o no tienen fecha asignada.', 'info');
+    }
+
+    // ?? ORDEN LEGAL Y SANITARIO (PRINCIPIO MIXTO): Categor¨ªa -> D¨ªas Restantes (FEFO) -> Nombre
+    batchRows.sort((a, b) => {
+        // 1. Agrupamos por Categor¨ªa (A -> Z)
+        const catA = (a.category || '').toUpperCase();
+        const catB = (b.category || '').toUpperCase();
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        
+        // 2. Si son de la misma categor¨ªa, el m¨¢s cr¨ªtico (FEFO) va primero
+        if (a.days_left !== b.days_left) {
+            return a.days_left - b.days_left;
+        }
+
+        // 3. Si empatan en categor¨ªa y fecha, ordenamos por Nombre (A -> Z)
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
+
+    const doc = new jsPDF('l', 'mm', 'a4'); // Horizontal
+    const pageWidth = doc.internal.pageSize.width;
+
+    const colors = {
+        header: [15, 23, 42],
+        accent: [217, 119, 6],
+        bg: [248, 250, 252]
+    };
+
+    const formatQty = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? '0' : num.toString();
+    };
+
+    doc.setFillColor(...colors.header);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setFontSize(15);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("CONTROL SANITARIO DE VENCIMIENTOS (SACS / FEFO)", 14, 12);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text("TRAZABILIDAD DE PRODUCTOS PERECEDEROS Y DISPOSICION SANITARIA", 14, 18);
+    
+    // Sanitizar Raz¨®n Social
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`RIF: ${finalCompanyDocument}  |  Razon Social: ${safeName}`, 14, 25);
+
+    const dateStr = new Date().toLocaleString('es-VE');
+    doc.text(`Fecha de Auditoria: ${dateStr}`, pageWidth - 14, 12, { align: 'right' });
+    doc.text(`Tasa Oficial BCV: Bs ${formatBs(bcvRate)}`, pageWidth - 14, 18, { align: 'right' });
+    doc.text(`Expresado en: Bs y Divisa Referencial (Ref)`, pageWidth - 14, 25, { align: 'right' });
+
+    // Tabla Detallada SACS Bimonetaria con la nueva estructura de columnas
+    autoTable(doc, {
+        startY: 42,
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION', 'VENCE', 'ESTATUS SANITARIO', 'CANTIDAD', 'VALOR (Bs)', 'VALOR (Ref)']],
+        body: batchRows.map(r => {
+            const valUSD = r.stock * r.cost_usd;
+            const valVES = valUSD * bcvRate;
+            
+            // Sanitizamos textos
+            const cleanName = r.name ? r.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 35) : 'N/A';
+            const cleanCat = r.category ? r.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
+            
+            // UX PRO: Agrupamos Estatus y D¨ªas en una sola columna para ganar espacio y limpieza
+            let statusText = r.status === 'VENCIDO' ? 'VENCIDO' : `${r.status} (${r.days_left} dias)`;
+
+            return [
+                r.barcode,
+                cleanCat,
+                cleanName,
+                r.expiration_date,
+                statusText,
+                `${formatQty(r.stock)} ${r.unit}`,
+                formatBs(valVES),
+                formatUSD(valUSD)
+            ];
+        }),
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        headStyles: { fillColor: colors.header, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 30 }, // Ancho estricto para Categor¨ªa
+            2: { cellWidth: 'auto' }, // Descripci¨®n toma el resto
+            3: { halign: 'center', fontStyle: 'bold' }, 
+            4: { halign: 'center', fontStyle: 'bold' }, 
+            5: { halign: 'right', fontStyle: 'bold' }, 
+            6: { halign: 'right' }, 
+            7: { halign: 'right', fontStyle: 'bold', textColor: [0, 86, 179] } 
+        },
+        didParseCell: function(data) {
+            // Sem¨¢foro visual en la nueva columna de Estatus (Index 4)
+            if (data.column.index === 4 && data.section === 'body') {
+                const val = data.cell.raw;
+                if (val.includes('VENCIDO')) data.cell.styles.textColor = [225, 29, 72];
+                else if (val.includes('CRITICO')) data.cell.styles.textColor = [217, 119, 6];
+                else if (val.includes('PRECAUCION')) data.cell.styles.textColor = [202, 138, 4];
+                else data.cell.styles.textColor = [16, 185, 129];
+            }
+        },
+        alternateRowStyles: { fillColor: colors.bg }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Base Legal: Normas de Buenas Practicas de Almacenamiento y Distribucion (SACS) y Providencia Administrativa 0071.", 14, finalY);
+    
+    // ?? Agregamos la justificaci¨®n del ordenamiento en el footer
+    doc.text("Principio Mixto aplicado: Agrupacion por rubro (Legal) y ordenamiento por fecha critica FEFO (Sanitario).", 14, finalY + 4);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(210, finalY + 15, 280, finalY + 15);
+    doc.text("Responsable Sanitario / Almacen", 220, finalY + 19);
+
+    doc.save(`Auditoria_Lotes_SACS_${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+// =========================================================================
+// ?? 3. REPORTE DE CONCILIACI¨®N Y DESVIACIONES DE INVENTARIO (AUDITOR¨ªA / UX PRO)
+// =========================================================================
+export const printInventoryReconciliationPDF = (countedData, allProducts, bcvRate, userIdentity = null) => {
+    
+    // 1. FILTRADO Y CRUCE MATEM¨¢TICO (Te¨®rico vs F¨ªsico)
+    let reconciliationRows = [];
+
+    // Tomamos los datos contados o el inventario general si no hay conteo previo ingresado
+    const baseData = countedData && countedData.length > 0 ? countedData : allProducts;
+
+    baseData.forEach(item => {
+        if (item.is_service) return; // Excluimos intangibles
+
+        const masterItem = allProducts.find(p => p.id === item.id) || item;
+        const stockTeorico = parseFloat(masterItem.stock) || 0;
+        
+        // Si el ¨ªtem viene de un conteo f¨ªsico interactivo, usar¨¢ item.physical_stock, de lo contrario asumimos el te¨®rico para an¨¢lisis
+        const stockFisico = item.physical_stock !== undefined ? parseFloat(item.physical_stock) : stockTeorico;
+        const diferencia = stockFisico - stockTeorico;
+
+        let statusDesviacion = 'CONFORME';
+        if (diferencia < 0) statusDesviacion = 'FALTANTE (MERMA)';
+        else if (diferencia > 0) statusDesviacion = 'SOBRANTE';
+
+        const priceRef = parseFloat(masterItem.price_usd) || 0;
+        const costoTotalRef = Math.abs(diferencia) * priceRef;
+        const costoTotalBs = costoTotalRef * bcvRate;
+
+        let unitMeasure = (masterItem.unit_measure || 'UND').toUpperCase().trim();
+        if (unitMeasure === 'KILO' || unitMeasure === 'KILOGRAMO') unitMeasure = 'KG';
+        else if (unitMeasure === 'LITRO') unitMeasure = 'LT';
+        else if (unitMeasure === 'UNIDAD') unitMeasure = 'UND';
+
+        reconciliationRows.push({
+            barcode: masterItem.barcode || `INT-${masterItem.id}`,
+            category: masterItem.category || 'General',
+            name: masterItem.name || 'Sin nombre',
+            unit: unitMeasure,
+            teorico: stockTeorico,
+            fisico: stockFisico,
+            diferencia: diferencia,
+            status: statusDesviacion,
+            costoRef: priceRef,
+            impactoRef: costoTotalRef,
+            impactoBs: costoTotalBs
+        });
+    });
+
+    if (reconciliationRows.length === 0) {
+        return Swal.fire('Sin Datos', 'No hay registros v¨¢lidos para realizar la conciliaci¨®n.', 'info');
+    }
+
+    // 2. ORDEN LEGAL VENEZOLANO: Categor¨ªa -> Nombre
+    reconciliationRows.sort((a, b) => {
+        const catA = (a.category || '').toUpperCase();
+        const catB = (b.category || '').toUpperCase();
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        return (a.name || '').toUpperCase().localeCompare((b.name || '').toUpperCase());
+    });
+
+    // 3. FASE MARCA BLANCA
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName;
+    const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument;
+
+    const doc = new jsPDF('l', 'mm', 'a4'); // Horizontal para m¨¢xima visibilidad gerencial
+    const pageWidth = doc.internal.pageSize.width;
+
+    const colors = {
+        header: [30, 41, 59],
+        accent: [225, 29, 72],
+        green: [22, 163, 74],
+        bg: [248, 250, 252]
+    };
+
+    const formatQty = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? '0' : num.toString();
+    };
+
+    // Encabezado Corporativo
+    doc.setFillColor(...colors.header);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setFontSize(15);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("REPORTE DE CONCILIACION Y DESVIACIONES DE INVENTARIO", 14, 12);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text("AUDITORIA FINANCIERA Y CONTROL DE MERMAS (TEORICO VS FISICO)", 14, 18);
+    
+    const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`RIF: ${finalCompanyDocument}  |  Razon Social: ${safeName}`, 14, 25);
+
+    const dateStr = new Date().toLocaleString('es-VE');
+    doc.text(`Fecha de Conciliacion: ${dateStr}`, pageWidth - 14, 12, { align: 'right' });
+    doc.text(`Tasa BCV: Bs ${formatBs(bcvRate)}`, pageWidth - 14, 18, { align: 'right' });
+    doc.text(`Expresado en: Bs y Divisa Referencial (Ref)`, pageWidth - 14, 25, { align: 'right' });
+
+    // 4. TABLA DE CONCILIACI¨®N
+    autoTable(doc, {
+        startY: 42,
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION', 'TEORICO', 'FISICO', 'DIFERENCIA', 'ESTATUS', 'IMPACTO (Bs)', 'IMPACTO (Ref)']],
+        body: reconciliationRows.map(r => {
+            const cleanName = r.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 30);
+            const cleanCat = r.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+            return [
+                r.barcode,
+                cleanCat,
+                cleanName,
+                `${formatQty(r.teorico)} ${r.unit}`,
+                `${formatQty(r.fisico)} ${r.unit}`,
+                `${r.diferencia > 0 ? '+' : ''}${formatQty(r.diferencia)} ${r.unit}`,
+                r.status,
+                formatBs(r.impactoBs),
+                formatUSD(r.impactoRef)
+            ];
+        }),
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        headStyles: { fillColor: colors.header, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 32 },
+            2: { cellWidth: 'auto' },
+            3: { halign: 'center' },
+            4: { halign: 'center', fontStyle: 'bold' },
+            5: { halign: 'center', fontStyle: 'bold' },
+            6: { halign: 'center', fontStyle: 'bold' },
+            7: { halign: 'right', fontStyle: 'bold' },
+            8: { halign: 'right', fontStyle: 'bold', textColor: [0, 86, 179] }
+        },
+        didParseCell: function(data) {
+            // Pintar la columna de Estatus (Index 6) seg¨²n el resultado del cruce
+            if (data.column.index === 6 && data.section === 'body') {
+                const val = data.cell.raw;
+                if (val.includes('FALTANTE')) data.cell.styles.textColor = colors.accent;
+                else if (val.includes('SOBRANTE')) data.cell.styles.textColor = [202, 138, 4];
+                else data.cell.styles.textColor = colors.green;
+            }
+        },
+        alternateRowStyles: { fillColor: colors.bg }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Base Legal: Art. 177 Reglamento de la Ley de ISLR (Control de Inventarios Permanentes) y Normas de Auditoria Interna.", 14, finalY);
+    doc.text("Nota Gerencial: Las diferencias detectadas deben ser justificadas contablemente para la emision de asientos de ajuste.", 14, finalY + 4);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(190, finalY + 15, 275, finalY + 15);
+    doc.text("Comite de Auditoria / Administracion", 210, finalY + 19);
+
+    doc.save(`Conciliacion_Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+// --- NUEVO: REIMPRIMIR ACTA HIST¨®RICA DE AUDITOR¨ªA ---
+export const printHistoricalAuditPDF = (auditData, userIdentity = null) => {
+    const { header, details } = auditData;
+    const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+    
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const colors = { header: [30, 41, 59], accent: [225, 29, 72], green: [22, 163, 74], bg: [248, 250, 252] };
+
+    doc.setFillColor(...colors.header);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setFontSize(15);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    
+    // ?? FIX UX: Textos sin tildes para evitar corrupci¨®n en jsPDF
+    doc.text("COPIA FIEL: ACTA DE AUDITORIA DE INVENTARIO", 14, 12);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    // ?? FIX UX: "C¨®DIGO" a "CODIGO"
+    doc.text(`CODIGO DE ACTA: ${header.audit_code} | RESPONSABLE: ${header.auditor_name.toUpperCase()}`, 14, 18);
+    
+    const safeName = (brand.companyName || 'Empresa').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`RIF: ${brand.companyDocument}  |  Razon Social: ${safeName}`, 14, 25);
+
+    doc.text(`Fecha del Acta: ${new Date(header.created_at).toLocaleString('es-VE')}`, pageWidth - 14, 12, { align: 'right' });
+    doc.text(`Tasa BCV Aplicada: Bs ${formatBs(header.bcv_rate_snapshot)}`, pageWidth - 14, 18, { align: 'right' });
+
+    autoTable(doc, {
+        startY: 42,
+        head: [['CODIGO', 'CATEGORIA', 'DESCRIPCION', 'TEORICO', 'FISICO', 'DIFERENCIA', 'ESTATUS', 'IMPACTO (Bs)', 'IMPACTO (Ref)']],
+        body: details.map(d => {
+            const diff = parseFloat(d.difference);
+            const status = diff < 0 ? 'FALTANTE (MERMA)' : (diff > 0 ? 'SOBRANTE' : 'CONFORME');
+            const impactRef = Math.abs(diff) * parseFloat(d.unit_cost_usd);
+            const impactBs = impactRef * parseFloat(header.bcv_rate_snapshot);
+            let unit = (d.unit_measure || 'UND').toUpperCase().trim();
+            if (unit === 'KILO' || unit === 'KILOGRAMO') unit = 'KG';
+            else if (unit === 'LITRO') unit = 'LT';
+
+            // ?? FIX UX: Limpiamos los nombres que vienen de la base de datos por si traen acentos
+            const cleanName = d.name ? d.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 30) : 'N/A';
+            const cleanCat = d.category ? d.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'General';
+
+            return [
+                d.barcode || 'S/C', cleanCat, cleanName,
+                `${parseFloat(d.theoretical_stock)} ${unit}`,
+                `${parseFloat(d.physical_stock)} ${unit}`,
+                `${diff > 0 ? '+' : ''}${diff} ${unit}`,
+                status, formatBs(impactBs), formatUSD(impactRef)
+            ];
+        }),
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        headStyles: { fillColor: colors.header, textColor: 255, fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+            3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' },
+            5: { halign: 'center', fontStyle: 'bold' }, 6: { halign: 'center', fontStyle: 'bold' },
+            7: { halign: 'right', fontStyle: 'bold' }, 8: { halign: 'right', fontStyle: 'bold', textColor: [0, 86, 179] }
+        },
+        didParseCell: function(data) {
+            if (data.column.index === 6 && data.section === 'body') {
+                const val = data.cell.raw;
+                if (val.includes('FALTANTE')) data.cell.styles.textColor = colors.accent;
+                else if (val.includes('SOBRANTE')) data.cell.styles.textColor = [202, 138, 4];
+                else data.cell.styles.textColor = colors.green;
+            }
+        },
+        alternateRowStyles: { fillColor: colors.bg }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    // ?? FIX UX: "auditor¨ªa" a "auditoria"
+    doc.text("Este documento es una copia fiel de la auditoria ejecutada y almacenada en la base de datos inmutable.", 14, finalY);
+    doc.text("Base Legal: Art. 177 Reglamento de la Ley de ISLR.", 14, finalY + 4);
+
+    doc.save(`Copia_Acta_${header.audit_code}.pdf`);
+};
+
+// --- NUEVO: GU¨ªA DE TRASLADO LEGAL (LOG¨ªSTICA Y DELIVERY) - VERSI¨®N ENTERPRISE ---
+export const printDeliveryGuidePDF = (deliveryData, saleData, tenantConfig, driverData) => {
+    const doc = new jsPDF('p', 'mm', 'a5'); // Formato A5
+    const pageWidth = doc.internal.pageSize.width;
+    
+    const colors = { primary: [30, 41, 59], accent: [79, 70, 229], text: [71, 85, 105], bgLight: [248, 250, 252], alert: [220, 38, 38], success: [22, 163, 74] };
+
+    // ?? DETERMINAR ESTATUS LOG¨ªSTICO
+    const logisticStatus = deliveryData.status || saleData.delivery_info?.status || 'PENDIENTE';
+
+    // 1. CABECERA
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("GUIA DE TRASLADO DE MERCANCIA", pageWidth / 2, 12, { align: 'center' });
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 200, 200);
+    doc.text("DOCUMENTO LOGISTICO SIN VALIDEZ FISCAL PARA RESPALDO DE INVENTARIO", pageWidth / 2, 17, { align: 'center' });
+    
+    const safeDocId = saleData.fiscal_invoice_number || saleData.correlativo_interno || saleData.sale_id || saleData.id || 'S/N';
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(pageWidth / 2 - 20, 20, 40, 6, 1, 1, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.primary);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TICKET #${safeDocId}`, pageWidth / 2, 24, { align: 'center' });
+
+    // 2. EMISOR
+    doc.setTextColor(10, 10, 10);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text("ORIGEN (EMISOR)", 10, 36);
+    doc.setFont('helvetica', 'normal');
+    const safeName = (tenantConfig.companyName || 'Empresa').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`Razon Social: ${safeName}`, 10, 41);
+    doc.text(`RIF: ${tenantConfig.companyDocument || 'J-00000000-0'}`, 10, 45);
+    doc.text(`Doc. Asociado: Venta #${safeDocId}`, 10, 49);
+
+    // 3. RECEPTOR (CLIENTE)
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text("DESTINO (RECEPTOR)", 75, 36);
+    doc.setFont('helvetica', 'normal');
+    
+    const safeClientName = saleData.customer_name || saleData.client_name || 'Consumidor Final';
+    const safeClientId = saleData.id_number || saleData.client_id || 'N/A';
+    const safeClientPhone = saleData.customer_phone || saleData.phone || deliveryData.phone || deliveryData.client_phone || 'N/A';
+    
+    doc.text(`Cliente: ${safeClientName.substring(0, 35)}`, 75, 41);
+    doc.text(`CI/RIF: ${safeClientId}`, 75, 45);
+    doc.text(`Telefono: ${safeClientPhone}`, 75, 49);
+
+    // 4. DIRECCI¨®N
+    doc.setFillColor(...colors.bgLight);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(10, 54, pageWidth - 20, 14, 2, 2, 'FD'); 
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.primary);
+    doc.text("DIRECCION DE ENTREGA:", 13, 59);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(50, 50, 50);
+    const safeAddress = deliveryData.address || deliveryData.shipping_address || 'Retiro en Tienda / Direcci¨®n no especificada';
+    doc.text(doc.splitTextToSize(safeAddress, pageWidth - 26), 13, 64);
+
+    // 5. MOTORIZADO
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(10, 10, 10);
+    doc.text("DATOS DEL MOTORIZADO / TRANSPORTISTA", 10, 75);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Conductor: ${driverData.name || 'N/A'}`, 10, 80);
+    doc.text(`Cedula / RIF: ${driverData.id_number || 'N/A'}`, 75, 80);
+    doc.text(`Info Vehiculo: ${driverData.vehicle_info || 'N/A'}`, 10, 84);
+
+    // 6. TABLA UX PRO
+    const rawItems = saleData.items_comprados ? saleData.items_comprados.split(', ') : [];
+    
+    const tableBody = rawItems.map(item => {
+        const cleanItem = item.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const match = cleanItem.match(/(.*)\s+\(([\d\.]+)\s*(?:UND|KG|LT)?\)$/i) || cleanItem.match(/(.*)\s+\(([\d\.]+)\)$/);
+        
+        if (match) {
+            const desc = match[1].trim();
+            const qty = match[2].trim();
+            return [`${qty} UND`, desc];
+        }
+        return ["-", cleanItem]; 
+    });
+
+    autoTable(doc, {
+        startY: 89,
+        head: [['CANT.', 'DESCRIPCION DE LA MERCANCIA']],
+        body: tableBody.length > 0 ? tableBody : [['-', 'Articulos vinculados al Ticket #' + safeDocId]],
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+            0: { halign: 'center', fontStyle: 'bold', cellWidth: 22 }, 
+            1: { halign: 'left' } 
+        },
+        alternateRowStyles: { fillColor: colors.bgLight },
+        tableLineColor: 226, tableLineWidth: 0.1,
+    });
+
+    let finalY = doc.lastAutoTable.finalY + 8;
+
+    // 7. ALERTA COBRO
+    const isPending = saleData.sale_status === 'PENDIENTE' || saleData.status === 'PENDIENTE';
+    const totalToCollect = parseFloat(saleData.total_usd) || 0;
+
+    if (isPending) {
+        doc.setFillColor(254, 242, 242); doc.setDrawColor(...colors.alert);
+        doc.roundedRect(10, finalY, pageWidth - 20, 16, 2, 2, 'FD');
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(...colors.alert);
+        doc.text("ATENCION: COBRO CONTRA ENTREGA (C.O.D)", 14, finalY + 6);
+        doc.setFontSize(12); doc.text(`Monto a Recaudar: Ref ${totalToCollect.toFixed(2)}`, 14, finalY + 12);
+        finalY += 20;
+    } else {
+        doc.setFillColor(240, 253, 244); doc.setDrawColor(...colors.success);
+        doc.roundedRect(10, finalY, pageWidth - 20, 12, 2, 2, 'FD');
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(...colors.success);
+        doc.text("PEDIDO PRE-PAGADO (No cobrar al cliente)", pageWidth / 2, finalY + 7, { align: 'center' });
+        finalY += 16;
+    }
+
+    // ?? 8. ETIQUETA UX PRO PARA DEVOLUCIONES / CANCELACIONES (Elegante y no invasiva)
+    if (logisticStatus === 'DEVUELTO' || logisticStatus === 'CANCELADO') {
+        const isCancel = logisticStatus === 'CANCELADO';
+        
+        // Colores limpios: Fondo suave, borde s¨®lido
+        doc.setFillColor(isCancel ? 254 : 255, isCancel ? 226 : 251, isCancel ? 226 : 235); // bg-rose-100 / bg-amber-100
+        doc.setDrawColor(isCancel ? 220 : 217, isCancel ? 38 : 119, isCancel ? 38 : 6); // border-rose-600 / border-amber-600
+        doc.setLineWidth(0.5);
+        doc.roundedRect(10, finalY, pageWidth - 20, 10, 2, 2, 'FD');
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(isCancel ? 220 : 217, isCancel ? 38 : 119, isCancel ? 38 : 6);
+        doc.text(`ARCHIVADO: TICKET ${logisticStatus}`, pageWidth / 2, finalY + 6.5, { align: 'center' });
+        
+        finalY += 14;
+    }
+
+    // 9. FIRMAS
+    doc.setDrawColor(200, 200, 200);
+    doc.line(20, finalY + 10, 65, finalY + 10); doc.line(pageWidth - 65, finalY + 10, pageWidth - 20, finalY + 10);
+    doc.setFontSize(7); doc.setTextColor(100); doc.setFont('helvetica', 'normal');
+    doc.text("Despachado por (Firma/Sello)", 42.5, finalY + 14, { align: 'center' });
+    doc.text("Recibido Conforme (Firma Cliente)", pageWidth - 42.5, finalY + 14, { align: 'center' });
+    doc.setFontSize(6); doc.setTextColor(150);
+    doc.text(`Generado el: ${new Date().toLocaleString('es-VE')} | Sistema BMS Digital`, pageWidth / 2, doc.internal.pageSize.height - 8, { align: 'center' });
+
+    doc.save(`Guia_Traslado_Ticket_${safeDocId}.pdf`);
+};
+
+// --- NUEVO: MANIFIESTO DIARIO DE DESPACHOS (CUADRE LOG¨ªSTICO) - UX PRO ---
+export const printDailyManifestPDF = (deliveries, tenantConfig) => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Paleta Corporativa BMS Digital
+    const colors = { primary: [30, 41, 59], accent: [79, 70, 229], bgLight: [248, 250, 252], alert: [220, 38, 38], success: [22, 163, 74], border: [200, 200, 200] };
+
+    // 1. CABECERA GERENCIAL
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 30, 'F');
+
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("MANIFIESTO DIARIO DE DESPACHOS", pageWidth / 2, 14, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 200, 200);
+    // ?? Ajuste de Copy: Terminolog¨ªa administrativa
+    doc.text("CONTROL INTERNO DE RUTAS Y RECAUDACION (SOPORTE ADMINISTRATIVO)", pageWidth / 2, 20, { align: 'center' });
+
+    // 2. DATOS DE EMISI¨®N Y EMPRESA
+    doc.setTextColor(10, 10, 10);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    const safeName = (tenantConfig.companyName || 'Empresa').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`Razon Social: ${safeName}`, 14, 40);
+    doc.text(`RIF: ${tenantConfig.companyDocument || 'J-00000000-0'}`, 14, 45);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Fecha de Emision: ${new Date().toLocaleString('es-VE')}`, pageWidth - 14, 40, { align: 'right' });
+    doc.text(`Total Ordenes Activas: ${deliveries.length}`, pageWidth - 14, 45, { align: 'right' });
+
+    // 3. PROCESAMIENTO DE DATOS (Agrupaci¨®n y C¨¢lculos)
+    let totalExpectedCash = 0;
+
+    const sortedDeliveries = [...deliveries].sort((a, b) => {
+        const driverA = a.delivery_info?.driver_name || 'Z_Sin Asignar';
+        const driverB = b.delivery_info?.driver_name || 'Z_Sin Asignar';
+        return driverA.localeCompare(driverB);
+    });
+
+    const tableBody = sortedDeliveries.map(order => {
+        const deliveryInfo = order.delivery_info || {};
+        const isPendingPayment = order.sale_status === 'PENDIENTE' || order.status === 'PENDIENTE';
+        const amount = parseFloat(order.total_usd) || 0;
+
+        if (isPendingPayment) totalExpectedCash += amount;
+
+        const driver = deliveryInfo.driver_name || 'POR ASIGNAR';
+        const client = (order.customer_name || 'Consumidor Final').substring(0, 32);
+        const status = (deliveryInfo.status || 'PENDIENTE').replace('_', ' ');
+        
+        // ?? FIX UX: Ahora muestra el monto incluso si ya est¨¢ pagado para control del administrador
+        const paymentAction = isPendingPayment 
+            ? `COBRAR: Ref ${amount.toFixed(2)}` 
+            : `PRE-PAGADO (Ref ${amount.toFixed(2)})`;
+
+        return [
+            `#${order.sale_id}`,
+            driver,
+            client,
+            status,
+            paymentAction
+        ];
+    });
+
+    // 4. TABLA DE RUTAS
+    autoTable(doc, {
+        startY: 55,
+        head: [['TICKET', 'MOTORIZADO', 'CLIENTE DESTINO', 'ESTATUS', 'CONDICION DE COBRO']],
+        body: tableBody.length > 0 ? tableBody : [['-', '-', 'No hay despachos activos', '-', '-']],
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+            0: { fontStyle: 'bold', halign: 'center', cellWidth: 20 },
+            1: { cellWidth: 40 },
+            2: { cellWidth: 50 },
+            3: { cellWidth: 25 },
+            4: { fontStyle: 'bold', halign: 'right' } // Contabilidad: Montos siempre alineados a la derecha
+        },
+        didParseCell: function(data) {
+            if (data.column.index === 4 && data.section === 'body') {
+                const val = data.cell.raw;
+                if (val.includes('COBRAR')) data.cell.styles.textColor = colors.alert;
+                else if (val.includes('PRE-PAGADO')) data.cell.styles.textColor = colors.success;
+            }
+        },
+        alternateRowStyles: { fillColor: colors.bgLight },
+        tableLineColor: 226, tableLineWidth: 0.1,
+    });
+
+    let finalY = doc.lastAutoTable.finalY + 15;
+
+    // 5. RESUMEN DE RECAUDACI¨®N (C.O.D) - UX PRO
+    doc.setFillColor(...colors.bgLight);
+    doc.setDrawColor(...colors.border);
+    doc.roundedRect(14, finalY, 100, 24, 2, 2, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(10, 10, 10);
+    doc.setFont('helvetica', 'bold');
+    doc.text("TOTAL EFECTIVO A RECAUDAR EN RUTA:", 18, finalY + 8);
+
+    doc.setFontSize(14);
+    doc.setTextColor(...colors.alert);
+    doc.text(`Ref ${totalExpectedCash.toFixed(2)}`, 18, finalY + 16);
+
+    // ?? BLINDAJE LEGAL: Aclaratoria de conversi¨®n BCV
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont('helvetica', 'normal');
+    doc.text("* Monto base. Sujeto a conversion segun Tasa BCV oficial del dia.", 18, finalY + 21);
+
+    // 6. FIRMAS DE CIERRE Y AUDITOR¨ªA
+    finalY += 50;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(20, finalY, 80, finalY);
+    doc.line(pageWidth - 80, finalY, pageWidth - 20, finalY);
+
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.setFont('helvetica', 'bold');
+    doc.text("FIRMA DEL DESPACHADOR", 50, finalY + 5, { align: 'center' });
+    doc.text("FIRMA GERENTE / AUDITORIA", pageWidth - 50, finalY + 5, { align: 'center' });
+
+    // Nota al pie
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.text("Soporte Administrativo Interno. Los montos recaudados en ruta deben declararse en el Cierre Fiscal (Reporte Z).", pageWidth / 2, finalY + 15, { align: 'center' });
+
+    doc.save(`Manifiesto_Despachos_${new Date().getTime()}.pdf`);
+};
+
+// ============================================================================
+// ?? NUEVO: REPORTE GERENCIAL DE LOG¨ªSTICA Y DESPACHOS (PROVIDENCIA 0071)
+// ============================================================================
+export const printDeliveryManagerReportPDF = (dateRange, historyData, bcvRate, tenantConfig) => {
+    const doc = new jsPDF('l', 'mm', 'a4'); 
+    const pageWidth = doc.internal.pageSize.width;
+    
+    // ?? PALETA DE COLORES NATIVA
+    const colors = { 
+        primary: [30, 41, 59],     
+        accent: [0, 86, 179],      
+        text: [71, 85, 105],       
+        bgLight: [248, 250, 252],  
+        success: [16, 185, 129],   
+        alert: [245, 158, 11],     
+        danger: [239, 68, 68]      
+    };
+
+    const filteredData = historyData.filter(order => {
+        const orderDate = new Date(order.created_at).toISOString().split('T')[0];
+        return orderDate >= dateRange.start && orderDate <= dateRange.end;
+    });
+
+    if (filteredData.length === 0) {
+        throw new Error("EMPTY_DATA");
+    }
+
+    // 2. CABECERA DEL REPORTE
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 30, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text("REPORTE GERENCIAL DE LOGISTICA Y DESPACHOS", 14, 16);
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const safeName = (tenantConfig.companyName || 'Empresa').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`${safeName} | RIF: ${tenantConfig.companyDocument || 'J-00000000-0'}`, 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`PERIODO AUDITADO`, pageWidth - 14, 16, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Desde: ${dateRange.start}  |  Hasta: ${dateRange.end}`, pageWidth - 14, 22, { align: 'right' });
+
+    // 3. PROCESAMIENTO MATEM¨¢TICO (Desglose de Ingresos y Liquidaci¨®n)
+    let totalEntregados = 0, totalDevueltos = 0, totalCancelados = 0;
+    let sumaTotalUSD = 0, sumaTotalVES = 0;
+    let sumaDeliveryUSD = 0;   
+    let sumaMercanciaUSD = 0;  
+
+    // ?? UX PRO: Objeto agrupador para la liquidaci¨®n de motorizados
+    const driverStats = {};
+
+    const tableBody = filteredData.map(order => {
+        const dateObj = new Date(order.created_at);
+        const timeString = dateObj.toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit', hour12: true}).replace(/\./g, '').toUpperCase();
+        const fechaHora = `${dateObj.toLocaleDateString('es-VE')} ${timeString}`;
+        
+        const safeSaleId = order.sale_id || order.id || 'S/N';
+        
+        // ??? UX PRO: Estandarizaci¨®n de nomenclaturas pendientes
+        let status = order.delivery_info?.status || 'ENTREGADO';
+        if (status === 'PREPARANDO' || status === 'EN RUTA') {
+            status = 'PENDIENTE';
+        }
+
+        const driverName = order.delivery_info?.driver_name || 'Desconocido';
+        const customerName = (order.customer_name || order.full_name || 'Consumidor Final').substring(0, 25);
+        const address = (order.delivery_info?.address || 'Sin especificar').substring(0, 35);
+        
+        const totalUSD = parseFloat(order.total_usd || 0);
+        const totalVES = parseFloat(order.total_ves || 0);
+
+        // Revenue Split
+        const deliveryFee = parseFloat(order.delivery_fee || order.delivery_info?.fee || order.delivery_info?.tarifa || 0);
+        const mercanciaUSD = totalUSD - deliveryFee;
+
+        if (status === 'ENTREGADO') { 
+            totalEntregados++; 
+            sumaTotalUSD += totalUSD; 
+            sumaTotalVES += totalVES; 
+            sumaDeliveryUSD += deliveryFee;
+            sumaMercanciaUSD += mercanciaUSD;
+
+            // Llenamos la matriz de motorizados solo con entregas exitosas
+            if (!driverStats[driverName]) {
+                driverStats[driverName] = { viajes: 0, recaudado: 0 };
+            }
+            driverStats[driverName].viajes += 1;
+            driverStats[driverName].recaudado += deliveryFee;
+        }
+        else if (status === 'DEVUELTO') { totalDevueltos++; }
+        else if (status === 'CANCELADO') { totalCancelados++; }
+
+        return [
+            fechaHora,
+            `#${safeSaleId}`,
+            status,
+            driverName,
+            customerName,
+            address,
+            `${totalUSD.toFixed(2)}`,
+            `${totalVES.toFixed(2)}`
+        ];
+    });
+
+    // 4. DIBUJAR LA TABLA PRINCIPAL
+    autoTable(doc, {
+        startY: 38,
+        head: [['FECHA / HORA', 'TICKET', 'ESTATUS', 'MOTORIZADO', 'CLIENTE', 'ZONA / DIRECCION', 'TOTAL REF', 'TOTAL BS']],
+        body: tableBody,
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+            0: { cellWidth: 32 },
+            1: { cellWidth: 18, fontStyle: 'bold' },
+            // ??? UX PRO: Ampliado a 28 para evitar salto de l¨ªnea en "PENDIENTE"
+            2: { cellWidth: 28, fontStyle: 'bold' }, 
+            3: { cellWidth: 35 },
+            // ??? UX PRO: Reducido a 39 para balancear el ancho
+            4: { cellWidth: 39 }, 
+            5: { cellWidth: 'auto' }, 
+            6: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+            7: { cellWidth: 25, halign: 'right', textColor: 100 }
+        },
+        alternateRowStyles: { fillColor: colors.bgLight },
+        didParseCell: function (data) {
+            if (data.section === 'body' && data.column.index === 2) {
+                if (data.cell.raw === 'ENTREGADO') data.cell.styles.textColor = colors.success;
+                if (data.cell.raw === 'DEVUELTO') data.cell.styles.textColor = colors.alert;
+                if (data.cell.raw === 'CANCELADO') data.cell.styles.textColor = colors.danger;
+            }
+        }
+    });
+
+    // 5. RESUMEN GERENCIAL GENERAL
+    let finalY = doc.lastAutoTable.finalY + 10;
+    
+    if (finalY > doc.internal.pageSize.height - 70) {
+        doc.addPage();
+        finalY = 20;
+    }
+
+    doc.setFillColor(...colors.bgLight);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, finalY, pageWidth - 28, 28, 3, 3, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.primary);
+    doc.setFont('helvetica', 'bold');
+    doc.text("RESUMEN DE OPERACIONES LOGISTICAS (Solo Entregas Efectivas)", 18, finalY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Entregados: ${totalEntregados}`, 18, finalY + 13);
+    doc.text(`Total Devueltos: ${totalDevueltos}`, 18, finalY + 18);
+    doc.text(`Total Cancelados: ${totalCancelados}`, 18, finalY + 23);
+    
+    doc.setFontSize(10);
+    doc.text(`Recaudacion Mercancia:`, pageWidth - 55, finalY + 13, { align: 'right' });
+    doc.text(`Recaudacion Fletes (Delivery):`, pageWidth - 55, finalY + 18, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Ref ${sumaMercanciaUSD.toFixed(2)}`, pageWidth - 20, finalY + 13, { align: 'right' });
+    doc.text(`Ref ${sumaDeliveryUSD.toFixed(2)}`, pageWidth - 20, finalY + 18, { align: 'right' });
+
+    doc.setFontSize(12);
+    doc.text(`TOTAL GENERAL:`, pageWidth - 55, finalY + 24, { align: 'right' });
+    doc.setTextColor(...colors.success); 
+    doc.text(`Ref ${sumaTotalUSD.toFixed(2)}`, pageWidth - 20, finalY + 24, { align: 'right' });
+
+    // ?? 6. NUEVA TABLA: ANEXO DE LIQUIDACI¨®N DE MOTORIZADOS
+    const driverTableBody = Object.keys(driverStats).map(name => {
+        const data = driverStats[name];
+        return [
+            name,
+            `${data.viajes} Entregas Efectivas`,
+            `Ref ${data.recaudado.toFixed(2)}`
+        ];
+    });
+
+    if (driverTableBody.length > 0) {
+        autoTable(doc, {
+            startY: finalY + 35, 
+            head: [['LIQUIDACION POR MOTORIZADO', 'VOLUMEN DE VIAJES', 'TOTAL FLETES GENERADOS']],
+            body: driverTableBody,
+            styles: { fontSize: 8, cellPadding: 4, font: 'helvetica' },
+            headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' }, 
+            columnStyles: {
+                0: { cellWidth: 80, fontStyle: 'bold', textColor: colors.primary }, 
+                1: { cellWidth: 50, halign: 'center' }, 
+                2: { cellWidth: 50, halign: 'right', fontStyle: 'bold', textColor: colors.success } 
+            },
+            alternateRowStyles: { fillColor: colors.bgLight },
+            margin: { left: 14 }
+        });
+    }
+
+    // Paginaci¨®n y sello de tiempo
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generado el: ${new Date().toLocaleString('es-VE')} | Sistema BMS Digital - Logistica`, 14, doc.internal.pageSize.height - 8);
+        doc.text(`Pagina ${i} de ${pageCount}`, pageWidth - 14, doc.internal.pageSize.height - 8, { align: 'right' });
+    }
+
+    doc.save(`Reporte_Logistica_Despachos_${new Date().getTime()}.pdf`);
 };

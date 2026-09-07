@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
+import GoogleAddressInput from '../components/ui/GoogleAddressInput';
 
-// --- FUNCI車N DE RENDERIZADO VISUAL ---
+// --- FUNCIOn DE RENDERIZADO VISUAL ---
 const CustomerModal = ({
     paymentMethod,
     paymentShares,
@@ -35,12 +36,12 @@ const CustomerModal = ({
     const isDonationUsed = isDonationTab || isDonationSplit;
     const isCreditUsed = (parseFloat(paymentShares['Cr\u00E9dito']) || parseFloat(paymentShares['Credito']) || 0) > 0;
 
-    // VALIDACI車N BLINDADA PARA DELIVERY
+    // VALIDACION BLINDADA PARA DELIVERY
     const canSubmit = isDelivery 
         ? (isFormReadyToSubmit && deliveryInfo?.driver_id && deliveryInfo?.address?.trim() !== '')
         : isFormReadyToSubmit;
 
-    // --- L車GICA DE TEMATIZACI車N DIN芍MICA (UX PREMIUM) ---
+    // --- LOGICA DE TEMATIZACION DINAMICA (UX PREMIUM) ---
     let themeConfig = {
         icon: '\uD83D\uDCC4', // Icono Papel
         title: 'Datos para Factura Fiscal',
@@ -83,14 +84,28 @@ const CustomerModal = ({
         };
     }
 
-    // Clases maestras para inputs Neum車rficos
+    // Clases maestras para inputs Neumorficos
     const inputUXClasses = "!space-y-0 [&_label]:!text-slate-400 [&_label]:!text-[10px] [&_label]:!uppercase [&_label]:!tracking-widest [&_label]:!font-bold [&_label]:!block [&_label]:!mb-1.5 [&_input]:!bg-slate-50 [&_input]:!border-slate-200 focus-within:[&_input]:!border-slate-400 focus-within:[&_input]:!bg-white [&_input]:!p-3.5 [&_input]:!text-sm [&_input]:!font-bold [&_input]:!text-slate-700 [&_input]:!rounded-xl [&_input]:!shadow-inner transition-colors";
 
-    return (
+    // =========================================================================
+    // ??? BLINDAJE UX PRO: Auto-sincronizacion del ID del motorizado
+    // =========================================================================
+    useEffect(() => {
+        if (isDelivery && !deliveryInfo?.driver_id && deliveryInfo?.driver_name && drivers?.length > 0) {
+            // Buscamos el ID exacto basado en el nombre que viene del primer modal
+            const matchedDriver = drivers.find(d => d.name === deliveryInfo.driver_name);
+            if (matchedDriver) {
+                // Lo inyectamos silenciosamente en la memoria para encender el boton
+                setDeliveryInfo(prev => ({ ...prev, driver_id: matchedDriver.id }));
+            }
+        }
+    }, [isDelivery, deliveryInfo?.driver_id, deliveryInfo?.driver_name, drivers, setDeliveryInfo]);
+
+    return (    
         <div className="fixed inset-0 z-[65] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
             <div className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] animate-scale-up border border-slate-100 flex flex-col max-h-[95vh] transform-gpu">
 
-                {/* HEADER PREMIUM DIN芍MICO */}
+                {/* HEADER PREMIUM DINAMICO */}
                 <div className={`p-6 border-b border-slate-100 flex justify-between items-start bg-gradient-to-b ${themeConfig.bgGradient} relative shrink-0`}>
                     <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm border shrink-0 ${themeConfig.iconClass}`}>
@@ -102,7 +117,7 @@ const CustomerModal = ({
                         </div>
                     </div>
 
-                    {/* BOT車N LIMPIAR */}
+                    {/* BOTON LIMPIAR */}
                     <button
                         onClick={handleClear}
                         className="w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-500 hover:border-rose-200 flex items-center justify-center transition-all outline-none shadow-sm active:scale-95"
@@ -115,7 +130,7 @@ const CustomerModal = ({
                 {/* BODY SCROLLABLE */}
                 <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar bg-white flex-1">
 
-                    {/* SELECTOR D赤AS DE CR谷DITO */}
+                    {/* SELECTOR DIAS DE CREDITO */}
                     {isCreditUsed && !isDonationUsed && (
                         <div className="flex justify-between items-center bg-rose-50/50 p-4 rounded-2xl border border-rose-100">
                             <span className="font-black text-rose-800 text-[11px] uppercase tracking-widest">Plazo de Pago</span>
@@ -163,7 +178,7 @@ const CustomerModal = ({
                         )}
                     </div>
 
-                    {/* C谷DULA */}
+                    {/* CEDULA */}
                     <Input
                         label={isDonationUsed ? 'C\u00E9dula del Beneficiario *' : 'C\u00E9dula / RIF *'}
                         name="id_number"
@@ -193,7 +208,7 @@ const CustomerModal = ({
                         />
                     </div>
 
-                    {/* SECCI車N DELIVERY */}
+                    {/* SECCION DELIVERY */}
                     {isDelivery && (
                         <div className="mt-2 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 animate-fade-in">
                             <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -206,16 +221,24 @@ const CustomerModal = ({
                                         Motorizado Asignado <span className="text-red-500">*</span>
                                     </label>
                                     <select
-                                        value={deliveryInfo?.driver_id || ''}
+                                        // ??? BLINDAJE: Busca por ID, si no lo encuentra, cruza el nombre con la lista de motorizados
+                                        value={
+                                            deliveryInfo?.driver_id || 
+                                            (deliveryInfo?.driver_name ? drivers.find(d => d.name === deliveryInfo?.driver_name)?.id : '') || 
+                                            ''
+                                        }
                                         onChange={(e) => {
-                                            const selectedDriver = drivers.find(d => d.id === parseInt(e.target.value));
+                                            const selectedVal = e.target.value;
+                                            // ??? BLINDAJE: Comparacion estricta convirtiendo a String para evitar fallos numericos
+                                            const selectedDriver = drivers.find(d => String(d.id) === String(selectedVal));
+                                            
                                             setDeliveryInfo(prev => ({
                                                 ...prev,
-                                                driver_id: e.target.value,
+                                                driver_id: selectedDriver ? selectedDriver.id : selectedVal,
                                                 driver_name: selectedDriver ? selectedDriver.name : ''
                                             }));
                                         }}
-                                        className={`w-full bg-slate-50 border-2 rounded-xl p-3.5 text-sm font-bold text-slate-700 focus:outline-none focus:bg-white focus:border-indigo-400 shadow-inner transition-all cursor-pointer ${!deliveryInfo?.driver_id ? 'border-red-200 focus:border-red-400' : 'border-slate-200'}`}
+                                        className={`w-full bg-slate-50 border-2 rounded-xl p-3.5 text-sm font-bold text-slate-700 focus:outline-none focus:bg-white focus:border-indigo-400 shadow-inner transition-all cursor-pointer ${(!deliveryInfo?.driver_id && !deliveryInfo?.driver_name) ? 'border-red-200 focus:border-red-400' : 'border-slate-200'}`}
                                     >
                                         <option value="" disabled>Seleccione un repartidor...</option>
                                         {drivers.map(driver => (
@@ -228,13 +251,10 @@ const CustomerModal = ({
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">
                                         {'Direcci\u00F3n de Entrega'} <span className="text-red-500">*</span>
                                     </label>
-                                    <textarea
-                                        rows="2"
-                                        value={deliveryInfo?.address || ''}
-                                        onChange={(e) => setDeliveryInfo(prev => ({...prev, address: e.target.value}))}
-                                        placeholder="Ej: Urb. Las Mercedes, Casa #4..."
-                                        className={`w-full bg-slate-50 border-2 rounded-xl p-3.5 text-sm font-bold text-slate-700 focus:outline-none focus:bg-white focus:border-indigo-400 shadow-inner transition-all resize-none ${!deliveryInfo?.address ? 'border-red-200 focus:border-red-400' : 'border-slate-200'}`}
-                                    ></textarea>
+                                    <GoogleAddressInput 
+                                        value={deliveryInfo?.address || ''} 
+                                        onChange={(newAddress) => setDeliveryInfo(prev => ({ ...prev, address: newAddress }))} 
+                                    />
                                 </div>
                             </div>
                         </div>

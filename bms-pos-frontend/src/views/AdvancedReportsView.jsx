@@ -1,5 +1,7 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import Swal from 'sweetalert2';
+
+
 
 // 🚀 OPTIMIZACIÓN: Memoizado estricto. Al ser la vista más pesada (Gráficas + Tablas de miles de filas), esto evita congelamientos (lag) en la interfaz táctil.
 export const AdvancedReportsView = memo(({
@@ -34,10 +36,18 @@ export const AdvancedReportsView = memo(({
     printLegalDebtReport,
     printInventoryAuditPDF,
     printPhysicalCountReport,
+    printInventoryReconciliationPDF,
+    printHistoricalAuditPDF,
     viewKardexHistory,
+    
+    printLowStockReport, 
+    printBatchExpirationReport,
+    
     printClosingReport,
     printReportX, // <-- NUEVO: Acción Reporte X
     printReportZ, // <-- NUEVO: Acción Reporte Z
+    
+    handlePrintDeliveryReport,
     
     // Servicios y Utilidades
     InventoryService,
@@ -50,6 +60,14 @@ export const AdvancedReportsView = memo(({
     Input,
     SimpleBarChart
 }) => {
+    const [showAuditModal, setShowAuditModal] = useState(false);
+    const [physicalCounts, setPhysicalCounts] = useState({});
+    
+    const [auditSearchQuery, setAuditSearchQuery] = useState('');
+    const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
+    const [showHistoryView, setShowHistoryView] = useState(false);
+    const [auditHistoryList, setAuditHistoryList] = useState([]);
+    
     return (
         /* --- VISTA: INTELIGENCIA DE NEGOCIOS (REDISEÑO PRO + DRILL DOWN + CIERRES) --- */
         <div className="p-4 md:p-8 overflow-y-auto h-full animate-slide-up bg-slate-50">
@@ -524,32 +542,64 @@ export const AdvancedReportsView = memo(({
                             )}
                         </div>
 
-                        <div className="flex gap-2">
-                            <Button
-                                variant="danger"
-                                onClick={() => printInventoryAuditPDF(detailedInventory)}
-                                className="!px-4 !py-2 text-xs !bg-red-600 hover:!bg-red-700 !shadow-md"
-                            >
-                                <span>📄</span> PDF Legal
-                            </Button>
+                       <div className="flex flex-wrap items-center gap-2">
+    {/* 🚀 NUEVO BOTÓN UX: Sincronización en caliente */}
+    <Button
+        variant="secondary"
+        onClick={fetchInventoryDetail}
+        className="!px-4 !py-2 text-xs !bg-white !text-slate-600 hover:!bg-blue-50 hover:!text-blue-700 !border !border-slate-200 !shadow-sm transition-all active:scale-95"
+        title="Actualizar datos desde la base de datos sin recargar la página"
+    >
+        <span>🔄</span> Sincronizar
+    </Button>
 
-                            <Button
-                                variant="primary"
-                                onClick={() => downloadCSV(inventoryFilteredData, 'Auditoria_Inventario')}
-                                className="!px-4 !py-2 text-xs !bg-green-600 hover:!bg-green-700 !shadow-md"
-                            >
-                                <span>📊</span> Excel / CSV
-                            </Button>
+    <Button
+        variant="danger"
+        onClick={() => printInventoryAuditPDF(detailedInventory)}
+        className="!px-4 !py-2 text-xs !bg-red-600 hover:!bg-red-700 !shadow-md"
+    >
+        <span>📄</span> PDF Legal
+    </Button>
 
-                            <Button
-                                variant="primary"
-                                onClick={printPhysicalCountReport}
-                                className="!px-4 !py-2 text-xs !bg-slate-700 hover:!bg-slate-800 !shadow-md"
-                                title="Imprimir formato para contar manualmente en almacén"
-                            >
-                                <span>📋</span> Conteo Físico
-                            </Button>
-                        </div>
+    <Button
+        variant="primary"
+        onClick={() => downloadCSV(inventoryFilteredData, 'Auditoria_Inventario')}
+        className="!px-4 !py-2 text-xs !bg-green-600 hover:!bg-green-700 !shadow-md"
+    >
+        <span>📊</span> Excel / CSV
+    </Button>
+
+    <Button
+        variant="primary"
+        onClick={printPhysicalCountReport}
+        className="!px-4 !py-2 text-xs !bg-slate-700 hover:!bg-slate-800 !shadow-md"
+        title="Imprimir formato para contar manualmente en almacén"
+    >
+        <span>📋</span> Conteo Físico
+    </Button>
+
+    {/* 🚨 Separador visual corporativo */}
+    <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
+
+    {/* 🚨 Nuevos Reportes de Auditoría SACS y Reposición */}
+    <Button
+        variant="primary"
+        onClick={printLowStockReport}
+        className="!px-4 !py-2 text-xs !bg-rose-50 !text-rose-600 hover:!bg-rose-100 !border !border-rose-200 !shadow-sm transition-colors"
+        title="Generar reporte de quiebre de stock y planificación de compras"
+    >
+        <span>📉</span> Stock Crítico
+    </Button>
+
+    <Button
+        variant="primary"
+        onClick={printBatchExpirationReport}
+        className="!px-4 !py-2 text-xs !bg-amber-50 !text-amber-600 hover:!bg-amber-100 !border !border-amber-200 !shadow-sm transition-colors"
+        title="Generar auditoría FEFO y control sanitario SACS"
+    >
+        <span>⏳</span> Lotes SACS
+    </Button>
+</div>
                     </div>
 
                     {/* Tabla de Datos */}
@@ -851,7 +901,398 @@ export const AdvancedReportsView = memo(({
                                 </button>
                             </div>
                         </div>
+                        
+                        {/* ========================================================= */}
+                        {/* TARJETA 4: CONCILIACIÓN DE INVENTARIO */}
+                        {/* ========================================================= */}
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 w-full hover:shadow-lg transition-all flex flex-col h-full">
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="bg-indigo-600 text-white p-3 rounded-2xl text-2xl">⚖️</div>
+                                <div>
+                                    <h4 className="font-bold text-lg text-slate-800">Conciliación Inventario</h4>
+                                    <p className="text-xs text-slate-500">Teórico vs. Físico (Art. 177)</p>
+                                </div>
+                            </div>
+
+                            <p className="text-sm text-slate-600 mb-6 leading-relaxed flex-1">
+                                Genera el acta legal de desviaciones (mermas y sobrantes) valorizada en Bolívares.
+                            </p>
+
+                            <button 
+                                onClick={() => {
+                                    // 🚀 PRECARGA UX: Llenamos el formulario con el stock teórico
+                                    const initialCounts = {};
+                                    products.forEach(p => {
+                                        if (!p.is_service) initialCounts[p.id] = p.stock;
+                                    });
+                                    setPhysicalCounts(initialCounts);
+                                    
+                                    // 👇 Limpiamos filtros antes de abrir 👇
+                                    setAuditSearchQuery('');
+                                    setShowOnlyDifferences(false);
+                                    
+                                    setShowAuditModal(true);
+                                }} 
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-200 active:scale-95 transition-all mt-auto"
+                            >
+                                Iniciar Auditoría (Vaciado)
+                            </button>
+                        </div>
+                        
+                        {/* 🚀 NUEVA TARJETA: REPORTE GERENCIAL DE DESPACHOS */}
+<div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-lg transition-all">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+    <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-start gap-4 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                🛵
+            </div>
+            <div>
+                <h3 className="text-lg font-black text-slate-800 tracking-tight leading-tight">Auditoría de Despachos</h3>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Control de Tránsito (Prov. 0071)</p>
+            </div>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-6 flex-1 font-medium leading-relaxed">
+            Reporte gerencial cruzado con rutas, motorizados asignados, tiempos y estatus de entrega valorizados en USD y VES.
+        </p>
+        
+        {/* Selector de Fechas Inherente a la Tarjeta */}
+        <div className="flex items-center gap-2 mb-5 bg-slate-50 p-2 rounded-xl border border-slate-100 shadow-inner">
+            <input 
+                type="date" 
+                value={reportDateRange.start} 
+                onChange={(e) => setReportDateRange(prev => ({ ...prev, start: e.target.value }))} 
+                className="bg-transparent text-xs font-bold text-slate-700 w-full outline-none cursor-pointer" 
+            />
+            <span className="text-slate-300 font-bold">➜</span>
+            <input 
+                type="date" 
+                value={reportDateRange.end} 
+                onChange={(e) => setReportDateRange(prev => ({ ...prev, end: e.target.value }))} 
+                className="bg-transparent text-xs font-bold text-slate-700 w-full outline-none cursor-pointer" 
+            />
+        </div>
+
+        <Button 
+            variant="primary" 
+            // Llamamos a la función inyectada desde App.jsx
+            onClick={() => handlePrintDeliveryReport(reportDateRange)}
+            className="w-full !bg-indigo-600 hover:!bg-indigo-700 !py-3 shadow-md shadow-indigo-200 active:scale-95 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            Descargar PDF
+        </Button>
+    </div>
+</div>
+        
+
+                    </div> {/* <--- CIERRE DEL GRID DE TARJETAS LEGALES */}
+                    
+                    {/* ========================================================= */}
+                    {/* 🚀 MODAL DE VACIADO DE AUDITORÍA (NATIVO + BUSCADOR UX + HISTORIAL) */}
+                    {/* ========================================================= */}
+                    {showAuditModal && (
+                        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                            <div className="bg-white rounded-3xl w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-scale-up border border-slate-200">
+                                
+                                {/* Header del Modal */}
+                                <div className="bg-indigo-600 text-white p-5 flex justify-between items-center shrink-0">
+                                    <div>
+                                        <h3 className="text-xl font-black flex items-center gap-2">
+                                            ⚖️ Vaciado de Toma Física
+                                        </h3>
+                                        <p className="text-indigo-200 text-xs mt-1">Transcriba los valores contados en almacén. El sistema calculará las desviaciones.</p>
+                                    </div>
+                                    <button onClick={() => setShowAuditModal(false)} className="bg-indigo-700 hover:bg-indigo-800 text-white rounded-full p-2 transition-colors">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                {/* 🛠️ BARRA DE HERRAMIENTAS (Buscador, Filtro y Switch de Historial) */}
+                                <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
+                                    
+                                    {!showHistoryView ? (
+                                        <>
+                                            {/* Buscador */}
+                                            <div className="relative w-full md:max-w-md">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10 pointer-events-none">🔍</span>
+                                                <Input
+                                                    placeholder="Buscar producto, código o categoría..."
+                                                    value={auditSearchQuery}
+                                                    onChange={(e) => setAuditSearchQuery(e.target.value)}
+                                                    className="w-full [&_input]:!pl-9 [&_input]:!py-2.5 [&_input]:!text-sm [&_input]:!bg-white focus:[&_input]:!border-indigo-400 focus:[&_input]:!ring-2 focus:[&_input]:!ring-indigo-50"
+                                                />
+                                                {auditSearchQuery && (
+                                                    <button onClick={() => setAuditSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 font-bold text-xs z-10">
+                                                        ✕ BORRAR
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Toggle "Solo Diferencias" */}
+                                            <button 
+                                                onClick={() => setShowOnlyDifferences(!showOnlyDifferences)}
+                                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                                                    showOnlyDifferences 
+                                                    ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${showOnlyDifferences ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
+                                                    {showOnlyDifferences && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                                                </div>
+                                                Ver Solo Diferencias
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div className="text-slate-600 font-bold text-sm flex items-center gap-2">
+                                            <span>📂</span> Archivo Legal Inmutable (Lectura)
+                                        </div>
+                                    )}
+
+                                    {/* Separador Visual */}
+                                    <div className="hidden md:block w-px h-8 bg-slate-300 mx-2"></div>
+
+                                    {/* 🚀 EL SWITCH MAESTRO (Nueva vs Historial) */}
+                                    <button 
+                                        onClick={() => {
+                                            const newState = !showHistoryView;
+                                            setShowHistoryView(newState);
+                                            if (newState) {
+                                                InventoryService.getAuditHistory().then(res => setAuditHistoryList(res.data)).catch(console.error);
+                                            }
+                                        }}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${showHistoryView ? 'bg-blue-600 text-white border-blue-700 shadow-md shadow-blue-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                                    >
+                                        <span>📜</span> {showHistoryView ? 'Volver al Vaciado' : 'Historial de Actas'}
+                                    </button>
+                                </div>
+
+                                {/* ÁREA DINÁMICA: Tabla de Captura VS Tabla de Historial */}
+                                <div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-slate-50 relative">
+                                    
+                                    {!showHistoryView ? (
+                                        /* --- TABLA ORIGINAL: NUEVO VACIADO --- */
+                                        <table className="w-full text-left text-sm text-slate-600 border-collapse">
+                                            <thead className="bg-white text-[11px] uppercase tracking-widest text-slate-400 sticky top-0 z-10 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
+                                                <tr>
+                                                    <th className="px-6 py-4">Producto</th>
+                                                    <th className="px-6 py-4 text-center border-l border-slate-100">Teórico (Sistema)</th>
+                                                    <th className="px-6 py-4 text-center bg-indigo-50 text-indigo-700 border-l border-indigo-100">Conteo Real (Físico)</th>
+                                                    <th className="px-6 py-4 text-center border-l border-slate-100">Desviación</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                                {products
+                                                    .filter(p => !p.is_service) // 1. Ocultar servicios
+                                                    .filter(p => {
+                                                        // 2. Filtro de Búsqueda
+                                                        if (auditSearchQuery) {
+                                                            const q = auditSearchQuery.toLowerCase();
+                                                            const matchName = p.name.toLowerCase().includes(q);
+                                                            const matchCode = p.barcode && p.barcode.toLowerCase().includes(q);
+                                                            const matchCat = p.category && p.category.toLowerCase().includes(q);
+                                                            if (!matchName && !matchCode && !matchCat) return false;
+                                                        }
+                                                        // 3. Filtro "Solo Diferencias"
+                                                        if (showOnlyDifferences) {
+                                                            const teorico = parseFloat(p.stock) || 0;
+                                                            const fisico = parseFloat(physicalCounts[p.id]) || 0;
+                                                            if (teorico === fisico) return false;
+                                                        }
+                                                        return true;
+                                                    })
+                                                    .sort((a,b) => (a.category||'').localeCompare(b.category||''))
+                                                    .map(product => {
+                                                        const teorico = parseFloat(product.stock) || 0;
+                                                        const fisico = parseFloat(physicalCounts[product.id]) || 0;
+                                                        const diferencia = fisico - teorico;
+                                                        
+                                                        let unit = (product.unit_measure || 'UND').toUpperCase().trim();
+                                                        if (unit === 'KILO' || unit === 'KILOGRAMO') unit = 'KG';
+                                                        else if (unit === 'LITRO') unit = 'LT';
+
+                                                        return (
+                                                            <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
+                                                                <td className="px-6 py-3">
+                                                                    <p className="font-bold text-slate-700 line-clamp-1">{product.name}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{product.barcode || 'S/C'} • {product.category}</p>
+                                                                </td>
+                                                                <td className="px-6 py-3 text-center border-l border-slate-50">
+                                                                    <span className="font-mono text-slate-500 font-bold text-sm">{teorico}</span>
+                                                                    <span className="text-[9px] text-slate-400 ml-1">{unit}</span>
+                                                                </td>
+                                                                <td className="px-6 py-2 text-center bg-indigo-50/20 border-l border-indigo-50">
+                                                                    <div className="flex items-center justify-center gap-1">
+                                                                        <input 
+                                                                            type="number" 
+                                                                            step="0.01"
+                                                                            value={physicalCounts[product.id] ?? ''}
+                                                                            onChange={(e) => setPhysicalCounts({...physicalCounts, [product.id]: e.target.value})}
+                                                                            className="w-24 px-2 py-1.5 text-center font-black text-indigo-700 bg-white border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-inner"
+                                                                        />
+                                                                        <span className="text-[9px] font-bold text-indigo-400 w-6 text-left">{unit}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-3 text-center border-l border-slate-50">
+                                                                    {diferencia === 0 ? (
+                                                                        <span className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold inline-block w-20 text-center">✨ OK</span>
+                                                                    ) : diferencia < 0 ? (
+                                                                        <span className="bg-red-50 border border-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold inline-block w-24 text-center">MERMA {diferencia}</span>
+                                                                    ) : (
+                                                                        <span className="bg-amber-50 border border-amber-100 text-amber-600 px-2 py-1 rounded text-[10px] font-bold inline-block w-24 text-center">SOBRA +{diferencia}</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+
+                                                {/* Estado Vacío por Búsqueda/Filtro */}
+                                                {products.filter(p => !p.is_service).length > 0 && products.filter(p => !p.is_service).filter(p => {
+                                                        if (showOnlyDifferences && parseFloat(p.stock) === (parseFloat(physicalCounts[p.id]) || 0)) return false;
+                                                        if (auditSearchQuery) {
+                                                            const q = auditSearchQuery.toLowerCase();
+                                                            return p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.toLowerCase().includes(q)) || (p.category && p.category.toLowerCase().includes(q));
+                                                        }
+                                                        return true;
+                                                }).length === 0 && (
+                                                    <tr>
+                                                        <td colSpan="4" className="py-16 text-center">
+                                                            <div className="text-4xl mb-3 opacity-30">📭</div>
+                                                            <p className="text-slate-500 font-bold">No se encontraron productos.</p>
+                                                            <p className="text-xs text-slate-400">Intente con otra búsqueda o desactive los filtros.</p>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        /* --- TABLA NUEVA: HISTORIAL DE AUDITORÍAS --- */
+                                        <table className="w-full text-left text-sm text-slate-600 border-collapse animate-fade-in">
+                                            <thead className="bg-white text-[10px] uppercase tracking-widest text-slate-400 sticky top-0 z-10 shadow-sm">
+                                                <tr>
+                                                    <th className="px-6 py-4">Acta Legal</th>
+                                                    <th className="px-6 py-4">Auditor / Fecha</th>
+                                                    <th className="px-6 py-4 text-right">Merma (Ref)</th>
+                                                    <th className="px-6 py-4 text-right">Sobrante (Ref)</th>
+                                                    <th className="px-6 py-4 text-center">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                                {auditHistoryList.length === 0 ? (
+                                                    <tr><td colSpan="5" className="py-16 text-center text-slate-400 font-bold">No hay actas registradas en el sistema.</td></tr>
+                                                ) : (
+                                                    auditHistoryList.map(audit => (
+                                                        <tr key={audit.id} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <span className="font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded">{audit.audit_code}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <p className="font-bold text-slate-700">{audit.auditor_name}</p>
+                                                                <p className="text-[10px] text-slate-400 font-mono">{new Date(audit.created_at).toLocaleString('es-VE')}</p>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right font-black text-red-600">Ref {parseFloat(audit.total_merma_usd).toFixed(2)}</td>
+                                                            <td className="px-6 py-4 text-right font-black text-amber-600">Ref {parseFloat(audit.total_sobrante_usd).toFixed(2)}</td>
+                                                            <td className="px-6 py-4 text-center">
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        Swal.fire({ title: 'Recuperando Acta...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                                                                        InventoryService.getAuditDetails(audit.id)
+                                                                            .then(res => {
+                                                                                printHistoricalAuditPDF(res.data, null); // Pasa null o user.identity
+                                                                                Swal.close();
+                                                                            })
+                                                                            .catch(err => {
+                                                                                console.error(err);
+                                                                                Swal.fire('Error', 'No se pudo recuperar el documento.', 'error');
+                                                                            });
+                                                                    }}
+                                                                    className="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold shadow-md hover:scale-105 transition-transform"
+                                                                >
+                                                                    📄 Reimprimir
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+
+                                {/* Footer con Acciones */}
+                                <div className="bg-white border-t border-slate-200 p-5 shrink-0 flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <p className="text-xs text-slate-500 font-medium max-w-md text-center md:text-left leading-relaxed">
+                                        {!showHistoryView 
+                                            ? "* Al procesar, el sistema emitirá el Acta de Conciliación Legal con las firmas de auditoría exigidas por el Art. 177 del ISLR." 
+                                            : "* Las actas de auditoría son inmutables y constituyen un soporte fiscal legal."
+                                        }
+                                    </p>
+                                    <div className="flex w-full md:w-auto gap-3">
+                                        <button onClick={() => setShowAuditModal(false)} className="flex-1 md:flex-none px-6 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors outline-none">
+                                            {showHistoryView ? 'Cerrar' : 'Cancelar'}
+                                        </button>
+                                        
+                                        {/* 🚀 TU BOTÓN ORIGINAL INTACTO (Oculto si se está viendo el historial) */}
+                                        {!showHistoryView && (
+                                            <button 
+                                                onClick={() => {
+                                                    const auditResults = products.filter(p => !p.is_service).map(p => ({
+                                                        id: p.id,
+                                                        physical_stock: parseFloat(physicalCounts[p.id]) || 0
+                                                    }));
+
+                                                    Swal.fire({ title: 'Procesando Auditoría...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                                                    
+                                                    InventoryService.processAudit({ 
+                                                        auditResults, 
+                                                        bcvRate, 
+                                                        notes: "Auditoría de Control Interno" 
+                                                    })
+                                                    .then((res) => {
+                                                        // 1. Imprimimos el PDF en segundo plano
+                                                        printInventoryReconciliationPDF(auditResults, products, bcvRate, null);
+                                                        Swal.close();
+                                                        setShowAuditModal(false);
+                                                        
+                                                        // 2. UX PRO: Esperamos a que el gerente lea el resumen
+                                                        Swal.fire({
+                                                            icon: 'success',
+                                                            title: '¡Auditoría Procesada!',
+                                                            text: `El Kardex ha sido ajustado bajo el acta ${res.data?.auditCode || 'legal'}. El soporte PDF se descargó.`,
+                                                            confirmButtonColor: '#10b981',
+                                                            confirmButtonText: 'Sincronizar Sistema',
+                                                            allowOutsideClick: false
+                                                        }).then((result) => {
+                                                            if (result.isConfirmed) {
+                                                                // 3. Barrido maestro: Forzamos a React a pedir todo fresco a PostgreSQL
+                                                                window.location.reload();
+                                                            }
+                                                        });
+                                                    })
+                                                    .catch(err => {
+                                                        console.error(err);
+                                                        Swal.fire('Error', 'No se pudo procesar la auditoría en la Base de Datos.', 'error');
+                                                    });
+                                                }}
+                                                className="flex-1 md:flex-none px-6 py-2.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200 active:scale-95 transition-all flex justify-center items-center gap-2 outline-none"
+                                            >
+                                                <span>🔒</span> Procesar y Generar Acta
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {/* ========================================================= */}
+                    
+                    {/* --- 🛡️ SECCIÓN: TRAZABILIDAD BCV (CERTIFICADO DE HONESTIDAD TÉCNICA) --- */}
+                    <div className="mt-8 pt-6 border-t border-slate-100">
+                        
                     </div>
+                    
+                    
                     
                     {/* --- 🛡️ SECCIÓN: TRAZABILIDAD BCV (CERTIFICADO DE HONESTIDAD TÉCNICA) --- */}
                     <div className="mt-8 pt-6 border-t border-slate-100">

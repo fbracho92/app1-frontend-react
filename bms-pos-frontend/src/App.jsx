@@ -247,9 +247,109 @@ function MainApp({ user, handleLogout }) {
         }
     });
 
-    // 🚨 2. CONECTAMOS LA FUNCIÓN REAL AL PUENTE
-    // Justo después de que el POS nos entrega "addToCart", se lo asignamos al puente para que la caja pueda usarlo
-    addToCartRef.current = addToCart;
+    // =========================================================================
+    // 🛡️ BLINDAJE LOGÍSTICO Y FISCAL (PROV. 0071): AUTO-DETECCIÓN DE DELIVERY
+    // =========================================================================
+    
+    // Función auxiliar para detectar si un ítem es logístico
+    const checkIsDeliveryItem = (item) => {
+        const pName = (item.name || '').toUpperCase();
+        const pCat = (item.category || '').toUpperCase();
+        return pName.includes('DELIVERY') || pName.includes('DESPACHO') || pName.includes('ENVÍO') || pName.includes('ENVIO') || pCat.includes('DELIVERY') || pCat.includes('DESPACHO');
+    };
+    
+    // 🚀 NUEVO BLINDAJE UX PRO: Auto-Reversión a TIENDA y Split de Ingresos (Tarifa)
+    useEffect(() => {
+        if (isDelivery) {
+            // Filtramos solo los ítems que son delivery/despacho
+            const deliveryItems = cart.filter(checkIsDeliveryItem);
+            const hasDeliveryInCart = deliveryItems.length > 0;
+            
+            // Si eliminaron el delivery del carrito...
+            if (!hasDeliveryInCart) {
+                setIsDelivery(false); // 1. Regresamos a modo TIENDA
+                setDeliveryInfo(null); // 2. Borramos basura de la memoria
+                
+                if (cart.length > 0) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'info',
+                        title: 'Modo Tienda Restaurado',
+                        text: 'El servicio de envío fue retirado de la orden.',
+                        showConfirmButton: false,
+                        timer: 3000,
+                        background: '#ffffff',
+                        customClass: { popup: 'rounded-xl shadow-md border border-slate-100 font-sans' }
+                    });
+                }
+            } else {
+                // 🛡️ REVENUE SPLIT CORREGIDO: Buscamos "price_usd" (variable real de tu BD)
+                const totalTarifa = deliveryItems.reduce((acc, item) => {
+                    // Extraemos el precio y cantidad de forma ultra segura
+                    const precioItem = parseFloat(item.price_usd || item.price || item.sale_price || 0);
+                    const cantidad = parseInt(item.quantity || 1);
+                    return acc + (precioItem * cantidad);
+                }, 0);
+                
+                // Lo inyectamos silenciosamente en el deliveryInfo para que viaje al Backend
+                setDeliveryInfo(prev => ({ 
+                    ...prev, 
+                    tarifa: totalTarifa 
+                }));
+            }
+        }
+    }, [cart, isDelivery, setIsDelivery, setDeliveryInfo]);
+
+    // 1. Interceptor al agregar al carrito (Auto-Switch UX PRO)
+    const handleSmartAddToCart = useCallback((product) => {
+        if (!product) return;
+        
+        if (checkIsDeliveryItem(product)) {
+            if (!isDelivery) {
+                setIsDelivery(true); // Cambia el switch automáticamente a Delivery
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'info',
+                    iconColor: '#4f46e5',
+                    title: '🚚 Modo Delivery Activado',
+                    text: 'Servicio de envío detectado. El sistema exigirá los datos del motorizado al cobrar.',
+                    showConfirmButton: false,
+                    timer: 5000,
+                    timerProgressBar: true,
+                    background: '#ffffff',
+                    color: '#1e293b',
+                    customClass: { popup: 'rounded-2xl shadow-xl border border-indigo-100 font-sans' }
+                });
+            }
+        }
+        
+        addToCart(product); // Agrega el producto normalmente
+    }, [isDelivery, setIsDelivery, addToCart]);
+
+    // 2. Interceptor al Cobrar (Hard Block Anti-Fuga Logística)
+    const handleSmartOpenPayment = () => {
+        const hasDeliveryInCart = cart.some(checkIsDeliveryItem);
+
+        if (hasDeliveryInCart && !isDelivery) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Inconsistencia Logística',
+                text: 'Tienes un servicio de Delivery en el carrito, pero intentas cobrar como "Venta en Tienda". El sistema ha corregido la modalidad para exigir los datos del motorizado.',
+                confirmButtonColor: '#4f46e5',
+                confirmButtonText: 'Completar Datos',
+                customClass: { popup: 'rounded-[2rem] shadow-2xl border border-slate-100' }
+            });
+            setIsDelivery(true); // Forzamos a modo delivery
+            return; // Bloqueamos abrir el modal de pago hasta que asigne al motorizado
+        }
+
+        handleOpenPayment(); // Abre el modal de pago si todo está correcto
+    };
+
+    // 🚨 3. RECONECTAMOS LAS FUNCIONES SMART AL PUENTE
+    addToCartRef.current = handleSmartAddToCart;
     
     // === CUSTOM HOOK: LÓGICA DE INVENTARIO Y PRODUCTOS ===
     const {
@@ -587,7 +687,7 @@ function MainApp({ user, handleLogout }) {
     };
 
     // === CUSTOM HOOK: ESCÁNER GLOBAL DE CÓDIGOS DE BARRA ===
-        useBarcodeScanner({ products, addToCart });
+        useBarcodeScanner({ products, addToCart: handleSmartAddToCart });
 
     // === CUSTOM HOOK: LÓGICA DE CRÉDITOS Y COBRANZAS ===
  const {
@@ -707,9 +807,87 @@ function MainApp({ user, handleLogout }) {
     // =========================================================================
     // 👇(PUENTE HACIA LOS GENERADORES PDF) 👇
     // =========================================================================
-    const printKardexReport = () => DocGen.printKardexReport(kardexProduct, kardexHistory, bcvRate);
-    const printInventoryAuditPDF = () => DocGen.printInventoryAuditPDF(products, bcvRate);
-    const printPhysicalCountReport = () => DocGen.printPhysicalCountReport(inventoryFilteredData, products);
+    const printKardexReport = () => DocGen.printKardexReport(kardexProduct, kardexHistory, bcvRate, user?.identity);
+    const printInventoryAuditPDF = () => DocGen.printInventoryAuditPDF(products, bcvRate, user?.identity);
+    // 1. Declara las funciones apuntando al generador
+    const printLowStockReport = () => DocGen.printLowStockReportPDF(products, bcvRate, user?.identity);
+    const printBatchExpirationReport = () => DocGen.printBatchExpirationReportPDF(products, bcvRate, user?.identity);
+    const printPhysicalCountReport = () => DocGen.printPhysicalCountReport(inventoryFilteredData, products, user?.identity);
+    const printInventoryReconciliationPDF = (countedData, allProducts, rate, identity) => DocGen.printInventoryReconciliationPDF(countedData, allProducts, rate, identity || user?.identity);
+    const printHistoricalAuditPDF = (auditData, identity) => DocGen.printHistoricalAuditPDF(auditData, identity || user?.identity);
+    
+    // 🚀 NUEVO: DISPARADOR DEL REPORTE LOGÍSTICO GERENCIAL
+    const handlePrintDeliveryReport = async (dateRange) => {
+        try {
+            Swal.fire({ 
+                title: 'Auditando Despachos...', 
+                text: 'Recopilando metadata logística del servidor.', 
+                didOpen: () => Swal.showLoading() 
+            });
+            
+            // Reutilizamos la función que ya tenías para traer el historial
+            const allDeliveries = await fetchDeliveryHistory();
+            
+            // Inyectamos todo al generador
+            DocGen.printDeliveryManagerReportPDF(dateRange, allDeliveries, bcvRate, user?.identity || tenantBrand);
+            
+            Swal.close();
+        } catch (error) {
+            console.error(error);
+            if (error.message === "EMPTY_DATA") {
+                Swal.fire('Sin Resultados', 'No existen registros logísticos para las fechas seleccionadas.', 'info');
+            } else {
+                Swal.fire('Error', 'No se pudo generar el reporte logístico.', 'error');
+            }
+        }
+    };
+    
+    const printDeliveryGuide = (order) => {
+        const deliveryData = order.delivery_info || {};
+        
+        // 🚀 FIX: Extraemos la data del motorizado directamente de la raíz del pedido (order)
+        // gracias al nuevo cruce de tablas que hicimos en el backend.
+        const driverData = {
+            name: deliveryData.driver_name || 'Asignado en Ruta',
+            id_number: order.driver_id_number || 'N/A',
+            vehicle_info: order.driver_vehicle_info || 'Motocicleta'
+        };
+        DocGen.printDeliveryGuidePDF(deliveryData, order, user?.identity, driverData);
+    };
+    
+    const printDailyManifest = (currentDeliveries) => {
+        if (!currentDeliveries || currentDeliveries.length === 0) {
+            Swal.fire('Tablero Vacío', 'No hay órdenes en proceso para generar un manifiesto.', 'info');
+            return;
+        }
+        DocGen.printDailyManifestPDF(currentDeliveries, user?.identity || {});
+    };
+    
+    const fetchDeliveryHistory = async () => {
+        try {
+            const token = localStorage.getItem('bms_token');
+            
+            // 🚀 FIX: Asegúrate de que diga "/delivery/history" (SIN LA 'S')
+            const response = await fetch(`${API_URL}/delivery/history`, { 
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` 
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al conectar con el servidor o sesión expirada');
+            }
+            
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error("Error trayendo historial logístico:", error);
+            return []; 
+        }
+    };
+    
     const printLegalDebtReport = () => DocGen.printLegalDebtReport(ReportService, bcvRate);
     
     const printSalesBookPDF = () => DocGen.printSalesBookPDF(reportDateRange, ReportService);
@@ -1043,7 +1221,7 @@ function MainApp({ user, handleLogout }) {
                         selectedCategory={selectedCategory}
                         setSelectedCategory={setSelectedCategory}
                         currentProducts={currentProducts}
-                        addToCart={addToCart}
+                        addToCart={handleSmartAddToCart}
                         totalPages={totalPages}
                         currentPage={currentPage}
                         paginate={paginate}
@@ -1057,7 +1235,7 @@ function MainApp({ user, handleLogout }) {
                         ivaUSD={ivaUSD}
                         totalVES={totalVES}
                         finalTotalUSD={finalTotalUSD}
-                        handleOpenPayment={handleOpenPayment}
+                        handleOpenPayment={handleSmartOpenPayment}
                         setCart={setCart}
                         
                         globalDiscount={globalDiscount}
@@ -1208,6 +1386,10 @@ function MainApp({ user, handleLogout }) {
                     deliveries={deliveries}
                     fetchDeliveries={fetchDeliveries}
                     changeStatus={changeStatus}
+                    printDeliveryGuide={printDeliveryGuide}
+                    printDailyManifest={printDailyManifest}
+                    dailySales={dailySalesList}
+                    fetchDeliveryHistory={fetchDeliveryHistory}
                 />
             ) : view === 'ADVANCED_REPORTS' ? (
                 <AdvancedReportsView
@@ -1247,6 +1429,8 @@ function MainApp({ user, handleLogout }) {
                     printLegalDebtReport={printLegalDebtReport}
                     printInventoryAuditPDF={printInventoryAuditPDF}
                     printPhysicalCountReport={printPhysicalCountReport}
+                    printInventoryReconciliationPDF={printInventoryReconciliationPDF}
+                    printHistoricalAuditPDF={printHistoricalAuditPDF}
                     viewKardexHistory={viewKardexHistory}
                     printClosingReport={printClosingReport}
                     printReportX={handlePrintReportX}
@@ -1258,6 +1442,9 @@ function MainApp({ user, handleLogout }) {
                     Button={Button}
                     Input={Input}
                     SimpleBarChart={SimpleBarChart}
+                    printLowStockReport={printLowStockReport}
+                    printBatchExpirationReport={printBatchExpirationReport}
+                    handlePrintDeliveryReport={handlePrintDeliveryReport}
                 />
                 ) : view === 'SAAS_MASTER' && user?.empresa_id === 1 ? (
                     <SaasMasterView />
@@ -1406,7 +1593,7 @@ function MainApp({ user, handleLogout }) {
              ivaUSD={ivaUSD}
              totalVES={totalVES}
              finalTotalUSD={finalTotalUSD}
-             handleOpenPayment={handleOpenPayment}
+             handleOpenPayment={handleSmartOpenPayment}
          />
             
             {/* --- MODAL DETALLE VENTA --- */}

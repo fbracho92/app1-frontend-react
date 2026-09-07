@@ -36,6 +36,9 @@ export const InventoryService = {
     getBatches: (id) => apiClient.get(`/inventory/batches/${id}`),
     getHistory: (id) => apiClient.get(`/inventory/history/${id}`),
     registerMovement: (data) => apiClient.post('/inventory/movement', data),
+    processAudit: (data) => apiClient.post('/inventory/audit', data),
+    getAuditHistory: () => apiClient.get('/inventory/audits'),
+    getAuditDetails: (id) => apiClient.get(`/inventory/audits/${id}`),
 };
 
 export const CustomerService = {

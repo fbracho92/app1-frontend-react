@@ -108,17 +108,27 @@ export const DashboardView = ({
                         )}
                     </div>
                     <div className="space-y-2 mb-2 relative z-10">
-                        {lowStock.slice(0, 3).map((p, i) => (
+                        {lowStock.slice(0, 3).map((p, i) => {
+                            // 🚨 UX PRO: Formateo con Unidad
+                            const stockVal = parseFloat(p.stock) || 0;
+                            const unit = (p.unit_measure || 'UND').toUpperCase();
+                            const displayStock = p.is_service ? 'N/A' : `${stockVal} ${unit}`;
+
+                            return (
                             <div key={i} className="flex justify-between items-center text-xs bg-white/80 p-2 rounded-xl border border-slate-100 shadow-sm backdrop-blur-sm">
                                 <span className="truncate w-3/4 font-bold text-slate-700 flex items-center gap-1.5">
                                     {(p.icon_emoji && (p.icon_emoji.startsWith('data:image') || p.icon_emoji.startsWith('http'))) ? (
                                         <img src={p.icon_emoji} alt="img" className="w-5 h-5 rounded-full object-cover border border-slate-100 flex-shrink-0" />
                                     ) : ( <span className="text-base">{p.icon_emoji || '📦'}</span> )}
                                     {p.name}
+                                    {/* 🚨 SACS Indicator */}
+                                    {p.is_perishable && <span title="Producto Perecedero (SACS)" className="text-[10px] grayscale-0">⏳</span>}
                                 </span>
-                                <span className="font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">{p.stock}</span>
+                                <span className="font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 whitespace-nowrap">
+                                    {displayStock}
+                                </span>
                             </div>
-                        ))}
+                        )})}
                         {lowStock.length === 0 && (
                             <div className="flex flex-col items-center justify-center py-2">
                                 <span className="text-2xl mb-1">🎉</span>
@@ -204,7 +214,6 @@ export const DashboardView = ({
                                         onClick={() => showSaleDetail(sale)} 
                                         className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
                                     >
-                                        {/* 🚀 FIX UX: SECUENCIA AISLADA DE VENTAS (UX PRO) */}
                                         <td className="px-5 py-3 align-middle">
                                             <div className="flex flex-col items-start gap-1">
                                                 <span className="font-black text-slate-400 text-xs leading-none">

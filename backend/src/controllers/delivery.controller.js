@@ -78,6 +78,18 @@ const updateStatus = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error al actualizar estatus' }); }
 };
 
+// 5. OBTENER HISTORIAL DE DESPACHOS
+const getDeliveryHistory = async (req, res) => {
+    try {
+        const empresaId = req.user.empresa_id;
+        const history = await DeliveryService.getDeliveryHistory(empresaId, 50);
+        res.json(history);
+    } catch (error) {
+        console.error("Error al obtener historial de despachos:", error);
+        res.status(500).json({ message: 'Error al obtener el historial' });
+    }
+};
+
 // 🚀 FIX EXPORTACIONES: Agregamos createDriver y updateDriver al objeto final
 module.exports = { 
     getDrivers, 
@@ -85,5 +97,6 @@ module.exports = {
     updateDriver, 
     getActiveDeliveries, 
     linkSale, 
-    updateStatus 
+    updateStatus,
+    getDeliveryHistory    
 };

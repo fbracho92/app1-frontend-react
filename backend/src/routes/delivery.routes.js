@@ -7,7 +7,8 @@ const {
     updateDriver, 
     getActiveDeliveries, 
     linkSale, 
-    updateStatus 
+    updateStatus,
+    getDeliveryHistory
 } = require('../controllers/delivery.controller');
 
 // =========================================================================
@@ -23,5 +24,7 @@ router.put('/drivers/:id', updateDriver);    // 🚀 NUEVA: Edita datos y cambia
 router.get('/active', getActiveDeliveries);
 router.post('/link', linkSale);
 router.put('/:id/status', updateStatus);
+
+router.get('/history', getDeliveryHistory);
 
 module.exports = router;

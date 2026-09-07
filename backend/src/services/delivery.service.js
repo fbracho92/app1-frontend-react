@@ -41,16 +41,30 @@ const updateDriver = async (id, data, empresaId) => {
     return res.rows[0];
 };
 
-// 2. ENTREGAS ACTIVAS (Vuelo de Datos para el Dashboard de Despachos)
+// 2. ENTREGAS ACTIVAS (Vuelo de Datos para el Dashboard de Despachos y Guías Legales)
 // 🚨 SAAS: Filtramos ventas por empresaId
 const getActiveDeliveries = async (empresaId) => {
-    // Mantiene tu consulta exacta de filtrado por estados PENDIENTE y EN_RUTA
-    // Esta consulta ahora aprovecha los índices de base de datos creados anteriormente para ser instantánea.
+    // 🚀 FIX: Cruce total con 'delivery_drivers' y limpieza matemática de decimales (1.000 -> 1)
     const res = await pool.query(`
         SELECT s.id as sale_id, s.total_ves, s.total_usd, s.status as sale_status, s.payment_method, s.created_at, 
-               s.delivery_info, c.full_name as customer_name, c.phone as customer_phone
+               s.delivery_info, 
+               c.full_name as customer_name, 
+               c.phone as customer_phone,
+               c.id_number,
+               dd.id_number as driver_id_number,     -- 👈 Cédula real del motorizado
+               dd.vehicle_info as driver_vehicle_info, -- 👈 Vehículo real del motorizado
+               (SELECT STRING_AGG(CONCAT(p.name, ' (', TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM CAST(si.quantity AS TEXT))), ')'), ', ') 
+                FROM sale_items si 
+                JOIN products p ON si.product_id = p.id 
+                WHERE si.sale_id = s.id) as items_comprados
         FROM sales s
         LEFT JOIN customers c ON s.customer_id = c.id
+        -- 🛡️ BLINDAJE: Buscamos al motorizado por su ID o por su Nombre para garantizar que aparezca
+        LEFT JOIN delivery_drivers dd ON (
+            (s.delivery_info->>'driver_id' IS NOT NULL AND dd.id::text = s.delivery_info->>'driver_id')
+            OR 
+            (s.delivery_info->>'driver_name' IS NOT NULL AND dd.name = s.delivery_info->>'driver_name')
+        ) AND dd.empresa_id = s.empresa_id
         WHERE s.is_delivery = true 
           AND (s.delivery_info->>'status' = 'PENDIENTE' OR s.delivery_info->>'status' = 'EN_RUTA')
           AND s.empresa_id = $1
@@ -74,19 +88,67 @@ const linkSaleToDelivery = async (saleId, deliveryInfo, empresaId) => {
 // 4. ACTUALIZAR ESTADO (Blindaje de Trazabilidad JSONB)
 // 🚨 SAAS: Validamos propiedad de la venta
 const updateDeliveryStatus = async (saleId, status, empresaId) => {
-    // Mantiene tu lógica avanzada de jsonb_set para no borrar datos adicionales (como el motorizado asignado).
-    // Se corrige el formato de entrada del parámetro status para asegurar compatibilidad 100% con tipos JSONB.
+    // 🛡️ BLINDAJE ADICIONAL: Si el estatus es ENTREGADO, también podemos actualizar 
+    // el estatus principal de la venta si tu lógica de negocio lo requiere, 
+    // manteniendo intacto el JSONB de delivery_info.
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Actualizamos el JSONB de delivery_info con el nuevo estatus (ej: 'ENTREGADO', 'DEVUELTO', 'CANCELADO')
+        const res = await client.query(`
+            UPDATE sales
+            SET delivery_info = jsonb_set(
+                COALESCE(delivery_info, '{}'::jsonb), 
+                '{status}', 
+                $1::jsonb
+            ),
+            updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2 AND empresa_id = $3 
+            RETURNING *
+        `, [JSON.stringify(status), saleId, empresaId]);
+
+        if (res.rowCount === 0) {
+            throw new Error('Venta no encontrada o sin permisos en la empresa.');
+        }
+
+        await client.query('COMMIT');
+        return res.rows[0];
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+// 5. HISTORIAL DE DESPACHOS (Trazabilidad y Auditoría Providencia 0071)
+const getDeliveryHistory = async (empresaId, limit = 50) => {
     const res = await pool.query(`
-        UPDATE sales
-        SET delivery_info = jsonb_set(
-            COALESCE(delivery_info, '{}'::jsonb), 
-            '{status}', 
-            $1::jsonb
-        )
-        WHERE id = $2 AND empresa_id = $3 RETURNING *
-    `, [JSON.stringify(status), saleId, empresaId]);
-    
-    return res.rows[0];
+        SELECT s.id as sale_id, s.total_ves, s.total_usd, s.status as sale_status, s.payment_method, s.created_at, 
+               s.delivery_info, 
+               c.full_name as customer_name, 
+               c.phone as customer_phone,
+               c.id_number,
+               dd.id_number as driver_id_number,
+               dd.vehicle_info as driver_vehicle_info,
+               (SELECT STRING_AGG(CONCAT(p.name, ' (', TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM CAST(si.quantity AS TEXT))), ')'), ', ') 
+                FROM sale_items si 
+                JOIN products p ON si.product_id = p.id 
+                WHERE si.sale_id = s.id) as items_comprados
+        FROM sales s
+        LEFT JOIN customers c ON s.customer_id = c.id
+        LEFT JOIN delivery_drivers dd ON (
+            (s.delivery_info->>'driver_id' IS NOT NULL AND dd.id::text = s.delivery_info->>'driver_id')
+            OR 
+            (s.delivery_info->>'driver_name' IS NOT NULL AND dd.name = s.delivery_info->>'driver_name')
+        ) AND dd.empresa_id = s.empresa_id
+        WHERE s.is_delivery = true 
+          AND s.empresa_id = $1
+        ORDER BY s.created_at DESC
+        LIMIT $2
+    `, [empresaId, limit]);
+    return res.rows;
 };
 
 // 🚀 FIX EXPORTACIONES: Se agregan createDriver y updateDriver al final
@@ -96,5 +158,6 @@ module.exports = {
     updateDriver, 
     getActiveDeliveries, 
     linkSaleToDelivery, 
-    updateDeliveryStatus 
+    updateDeliveryStatus,
+    getDeliveryHistory    
 };

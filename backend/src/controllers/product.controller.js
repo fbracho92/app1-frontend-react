@@ -47,4 +47,27 @@ const history = async (req, res) => {
     }
 };
 
-module.exports = { getAll, getBatches, upsert, move, history };
+const processAudit = async (req, res) => {
+    try {
+        const empresaId = req.user.empresa_id;
+        const userId = req.user.id;
+        const userName = req.user.username || 'Usuario';
+        
+        const result = await productService.processAudit(req.body, userId, userName, empresaId);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const getAuditHistory = async (req, res) => {
+    try { res.json(await productService.getAuditHistory(req.user.empresa_id)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+const getAuditDetails = async (req, res) => {
+    try { res.json(await productService.getAuditDetails(req.params.id, req.user.empresa_id)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+module.exports = { getAll, getBatches, upsert, move, history, processAudit, getAuditHistory, getAuditDetails };

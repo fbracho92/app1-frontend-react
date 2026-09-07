@@ -8,5 +8,8 @@ const productController = require('../controllers/product.controller');
 router.post('/movement', productController.move);       // Entrada/Salida
 router.get('/history/:id', productController.history);  // Kardex
 router.get('/batches/:id', productController.getBatches); // Lotes
+router.post('/audit', productController.processAudit);
+router.get('/audits', productController.getAuditHistory);
+router.get('/audits/:id', productController.getAuditDetails);
 
 module.exports = router;

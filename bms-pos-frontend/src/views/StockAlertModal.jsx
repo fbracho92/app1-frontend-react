@@ -37,7 +37,12 @@ export const StockAlertModal = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {lowStock.map(p => (
+                            {lowStock.map(p => {
+                                // 🚨 BLINDAJE UX PRO: Formateo seguro de cantidades y unidades
+                                const stockVal = parseFloat(p.stock) || 0;
+                                const unit = (p.unit_measure || 'UND').toUpperCase();
+                                
+                                return (
                                 <tr key={p.id} className="hover:bg-red-50/50 transition-colors">
                                     <td className="pl-4 sm:pl-5 pr-2 py-3 font-bold text-gray-700">
                                         <div className="flex items-center gap-2 sm:gap-3">
@@ -60,6 +65,8 @@ export const StockAlertModal = ({
                                                 <div className="flex flex-wrap gap-1 mt-0.5 sm:mt-1">
                                                     {p.is_service && <span className="text-[8px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded border border-purple-200 uppercase font-black">Servicio</span>}
                                                     {p.is_raw_material && <span className="text-[8px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 uppercase font-black">Insumo</span>}
+                                                    {/* 🚨 SACS UX: Etiqueta de perecedero */}
+                                                    {p.is_perishable && <span className="text-[8px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded border border-orange-200 uppercase font-black tracking-widest shadow-sm">Perecedero</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -72,13 +79,13 @@ export const StockAlertModal = ({
                                     </td>
                                     
                                     <td className="pr-4 sm:pr-5 pl-2 py-3 text-right">
-                                        {/* Lógica de Stock Blindada */}
-                                        <span className={`font-black text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full whitespace-nowrap ${p.is_service ? 'bg-slate-100 text-slate-400' : 'bg-red-100 text-red-600 border border-red-200/50'}`}>
-                                            {p.is_service ? 'N/A' : p.stock}
+                                        {/* 🚨 Lógica de Stock Blindada con Unidades */}
+                                        <span className={`font-black text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full whitespace-nowrap shadow-sm ${p.is_service ? 'bg-slate-100 text-slate-400' : 'bg-red-100 text-red-600 border border-red-200/50'}`}>
+                                            {p.is_service ? 'N/A' : `${stockVal} ${unit}`}
                                         </span>
                                     </td>
                                 </tr>
-                            ))}
+                            )})}
                             {lowStock.length === 0 && (
                                 <tr>
                                     <td colSpan="3" className="py-10 text-center">

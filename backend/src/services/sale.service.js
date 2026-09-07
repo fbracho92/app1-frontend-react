@@ -49,13 +49,31 @@ const createSale = async (data, empresaId) => {
         for (const item of items) {
             let finalProductId = item.product_id;
             let isService = item.is_service === true;
+            // Definimos inventoryQty usando la cantidad base enviada por el frontend
+            let inventoryQty = parseFloat(item.quantity) || 1;
+
+            // 🚨 BLINDAJE 1000% UOM: Desempaquetamos el peso desde el ID.
+            // Si el frontend envía "15-UOM-0.350-1724785231"
+            if (typeof finalProductId === 'string' && finalProductId.includes('-UOM-')) {
+                const parts = finalProductId.split('-UOM-');
+                finalProductId = parseInt(parts[0], 10); // Rescata el ID real en BD (Ej: 15)
+                
+                // Extrae el peso físico exacto (Ej: 0.350)
+                const fraction = parseFloat(parts[1].split('-')[0]); 
+                if (!isNaN(fraction)) {
+                    // Multiplica el peso por la cantidad de veces que el producto esté en el carrito
+                    inventoryQty = fraction * (parseFloat(item.quantity) || 1);
+                }
+            }
 
             if (item.name && item.name.includes('[CAP:')) {
                 const match = item.name.match(/\[CAP:([\d\.]+)\]/);
                 if (match) capitalTags += ` ${match[0]}`; 
             }
 
-            if (isNaN(finalProductId) || (typeof finalProductId === 'string' && finalProductId.startsWith('ADV'))) {
+            // 🚨 BLINDAJE AVANCE: Quitamos el isNaN traicionero. 
+            // Ahora SOLO creará/buscará "Avance de Efectivo" si el ID original empieza estrictamente con 'ADV'.
+            if (typeof item.product_id === 'string' && item.product_id.startsWith('ADV')) {
                 // 🚨 SAAS: Validamos la existencia del servicio POR EMPRESA
                 const serviceCheck = await client.query("SELECT id FROM products WHERE name = 'AVANCE DE EFECTIVO' AND empresa_id = $1 LIMIT 1", [empresaId]);
                 if (serviceCheck.rows.length > 0) {
@@ -68,13 +86,16 @@ const createSale = async (data, empresaId) => {
                 item.is_taxable = false;
             }
             
-            processedItems.push({ ...item, product_id: finalProductId, is_service: isService });
+            // Empaquetamos el ítem limpio, con su ID nativo restaurado y su variable inventoryQty inyectada
+            processedItems.push({ ...item, product_id: finalProductId, is_service: isService, inventoryQty: inventoryQty });
         }
 
         // 3. Procesar Inventario y Totales
         for (const item of processedItems) {
-            const qtyToDeduct = parseInt(item.quantity);
-            const itemTotalBase = parseFloat(item.price_usd) * qtyToDeduct;
+            // 1. CANTIDAD FINANCIERA (Lo que multiplica el precio cobrado en caja)
+            // Se usa parseFloat por seguridad, aunque el carrito suele enviar números enteros aquí
+            const financialQty = parseFloat(item.quantity); 
+            const itemTotalBase = parseFloat(item.price_usd) * financialQty;
 
             if (item.is_taxable) subtotalTaxableUsd += itemTotalBase;
             else subtotalExemptUsd += itemTotalBase;
@@ -82,13 +103,22 @@ const createSale = async (data, empresaId) => {
             if (item.is_service) continue; 
 
             const productId = item.product_id;
+            
+            // 🚨 EL FIX 1000%: Usamos EXACTAMENTE la cantidad física que rescatamos del ID en el paso anterior.
+            // Borramos el condicional con "is_fractioned" porque el frontend lo destruye.
+            const inventoryQty = item.inventoryQty; 
+
             // 🚨 SAAS: Buscamos lotes específicos de la empresa
             const batchesRes = await client.query(`SELECT id, stock FROM product_batches WHERE product_id = $1 AND empresa_id = $2 AND stock > 0 ORDER BY expiration_date ASC NULLS LAST`, [productId, empresaId]);
-            let remainingQty = qtyToDeduct;
+            
+            // Usamos inventoryQty para descontar decimales reales
+            let remainingQty = inventoryQty; 
             
             for (let batch of batchesRes.rows) {
                 if (remainingQty <= 0) break;
-                const take = Math.min(batch.stock, remainingQty);
+                // BLINDAJE: Forzamos parseFloat en batch.stock porque Postgres devuelve los DECIMAL como strings
+                const take = Math.min(parseFloat(batch.stock), remainingQty);
+                
                 // 🚨 SAAS: Validamos empresa_id al actualizar stock
                 await client.query('UPDATE product_batches SET stock = stock - $1 WHERE id = $2 AND empresa_id = $3', [take, batch.id, empresaId]);
                 remainingQty -= take;
@@ -98,8 +128,10 @@ const createSale = async (data, empresaId) => {
                  const finalStockRes = await client.query('SELECT COALESCE(SUM(stock), 0) as total FROM product_batches WHERE product_id = $1 AND empresa_id = $2', [productId, empresaId]);
                  await client.query('UPDATE products SET stock = $1, last_stock_update = CURRENT_TIMESTAMP WHERE id = $2 AND empresa_id = $3', [finalStockRes.rows[0].total, productId, empresaId]);
             } else {
-                 await client.query('UPDATE products SET stock = stock - $1 WHERE id = $2 AND empresa_id = $3', [qtyToDeduct, productId, empresaId]);
+                 await client.query('UPDATE products SET stock = stock - $1 WHERE id = $2 AND empresa_id = $3', [inventoryQty, productId, empresaId]);
             }
+            
+            // Nota: La variable item.inventoryQty ya está lista, pasará al Paso 7 para guardarse en el Kardex
         }
         
         // 4. Cálculos Financieros e IGTF
@@ -232,14 +264,21 @@ const createSale = async (data, empresaId) => {
         const movementParams = [];
 
         processedItems.forEach((item, index) => {
+            // --- 1. BLOQUE FINANCIERO (FACTURA/TICKET) ---
             const offset = index * 5;
             itemValues.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
-            itemParams.push(saleId, item.product_id, item.quantity, item.price_usd, empresaId);
+            
+            // Usamos parseFloat(item.quantity) que representa los "renglones" cobrados en caja
+            const financialQty = parseFloat(item.quantity);
+            itemParams.push(saleId, item.product_id, financialQty, item.price_usd, empresaId);
 
+            // --- 2. BLOQUE DE INVENTARIO FÍSICO (KARDEX) ---
             if (!item.is_service) {
                 const mOffset = movementParams.length;
                 movementValues.push(`($${mOffset + 1}, 'OUT', $${mOffset + 2}, 'VENTA', $${mOffset + 3}, (SELECT stock FROM products WHERE id = $${mOffset + 1} AND empresa_id = $${mOffset + 4}), $${mOffset + 4})`);
-                movementParams.push(item.product_id, item.quantity, `VENTA #${saleId}`, empresaId);
+                
+                // Usamos item.inventoryQty calculado en el paso anterior (El peso/volumen real descontado)
+                movementParams.push(item.product_id, item.inventoryQty, `VENTA #${saleId}`, empresaId);
             }
         });
 
@@ -435,13 +474,14 @@ const voidSale = async (saleId, payloadData, empresaId) => {
             originalRegisterId = regCheck.rows.length > 0 ? regCheck.rows[0].id : 1; 
         }
 
-        // 🚨 SAAS: Obtenemos el is_service real de la tabla products
+        // 🚨 SAAS: Obtenemos el stock físico REAL consultando el Kardex (inventory_movements), NO los tickets (sale_items).
+        // El Kardex guarda el valor decimal exacto que se descontó originalmente (Ej: 0.350).
         const itemsRes = await client.query(`
-            SELECT si.product_id, si.quantity, p.name, p.category, p.price_usd, p.is_service 
-            FROM sale_items si 
-            JOIN products p ON si.product_id = p.id 
-            WHERE si.sale_id = $1 AND si.empresa_id = $2
-        `, [saleId, empresaId]);
+            SELECT im.product_id, im.quantity, p.name, p.category, p.price_usd, p.is_service 
+            FROM inventory_movements im 
+            JOIN products p ON im.product_id = p.id 
+            WHERE im.document_ref = $1 AND im.type = 'OUT' AND im.empresa_id = $2
+        `, [`VENTA #${saleId}`, empresaId]);
         
         for (const item of itemsRes.rows) {
             // 🔥 BLINDAJE CERTIFICADO: Identificación exacta de servicios

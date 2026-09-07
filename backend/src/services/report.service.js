@@ -18,7 +18,7 @@ const calculateBreakdown = () => {
     return { breakdown, addToBreakdown };
 };
 
-// 1. REPORTE DIARIO (Ventas + Abonos de hoy - OPTIMIZADO: Complejidad O(n))
+// 1. REPORTE DIARIO (Ventas + Abonos de hoy - Inteligencia Reporte X vs Z)
 const getDailyReport = async (registerId, empresaId) => { // 🚨 SAAS
     const client = await pool.connect();
     try {
@@ -28,28 +28,29 @@ const getDailyReport = async (registerId, empresaId) => { // 🚨 SAAS
         let salesQuery = `
             SELECT id, amount_paid_usd, bcv_rate_snapshot, payment_method
             FROM sales 
-            WHERE DATE(created_at AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')
-            AND status != 'ANULADO'
+            WHERE status != 'ANULADO'
             AND empresa_id = $1
         `;
         
-        if (registerId && registerId !== -1) {
-            salesParams.push(registerId); // 🚨 SAAS: $2
-            salesQuery += ` AND register_id = $2`;
-        }
-
         let paymentsParams = [empresaId]; // 🚨 SAAS: Inyectamos $1
         let paymentsQuery = `
             SELECT cp.sale_id, cp.amount_usd, cp.payment_method
             FROM credit_payments cp
             JOIN sales s ON cp.sale_id = s.id
-            WHERE DATE(cp.payment_date AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')
-            AND cp.empresa_id = $1
+            WHERE cp.empresa_id = $1
         `;
         
         if (registerId && registerId !== -1) {
+            // 🚨 MODO REPORTE X (Cajero): Solo lo recaudado desde que ESTA caja se abrió
+            salesParams.push(registerId); // 🚨 SAAS: $2
+            salesQuery += ` AND register_id = $2 AND created_at >= COALESCE((SELECT opened_at FROM cash_shifts WHERE register_id = $2 AND empresa_id = $1 AND status = 'ABIERTA' ORDER BY id DESC LIMIT 1), CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')`;
+            
             paymentsParams.push(registerId); // 🚨 SAAS: $2
-            paymentsQuery += ` AND s.register_id = $2`;
+            paymentsQuery += ` AND s.register_id = $2 AND cp.payment_date >= COALESCE((SELECT opened_at FROM cash_shifts WHERE register_id = $2 AND empresa_id = $1 AND status = 'ABIERTA' ORDER BY id DESC LIMIT 1), CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')`;
+        } else {
+            // 🚨 MODO REPORTE Z (Admin): Todo el día calendario (Suma todos los turnos del día)
+            salesQuery += ` AND DATE(created_at AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')`;
+            paymentsQuery += ` AND DATE(cp.payment_date AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')`;
         }
 
         const [salesResult, paymentsResult] = await Promise.all([
@@ -164,9 +165,10 @@ const getLowStock = async (empresaId) => { // 🚨 SAAS
     return result.rows;
 };
 
-// 4. VENTAS DE HOY
+// 4. VENTAS DE HOY (Lista de tickets - Inteligencia Reporte X vs Z)
 const getSalesToday = async (registerId, empresaId) => { // 🚨 SAAS
     let params = [empresaId];
+    let paramCount = 1;
     
     // 🚀 FIX APLICADO: Secuencia Dinámica Aislada por Inquilino (UX PRO)
     // Usamos ROW_NUMBER() para crear una secuencia perfecta en memoria
@@ -181,12 +183,18 @@ const getSalesToday = async (registerId, empresaId) => { // 🚨 SAAS
             s.payment_method, s.status, c.full_name, s.discount_usd, s.control_number
         FROM TenantSales s
         LEFT JOIN customers c ON s.customer_id = c.id
-        WHERE DATE(s.created_at AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas')
+        WHERE 1=1
     `;
     
     if (registerId && registerId !== -1) {
+        paramCount++;
         params.push(registerId);
-        queryText += ` AND s.register_id = $2 `;
+        // 🚨 MODO REPORTE X: Solo tickets generados dentro de este turno específico
+        queryText += ` AND s.register_id = $${paramCount} `;
+        queryText += ` AND s.created_at >= COALESCE((SELECT opened_at FROM cash_shifts WHERE register_id = $${paramCount} AND empresa_id = $1 AND status = 'ABIERTA' ORDER BY id DESC LIMIT 1), CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas') `;
+    } else {
+        // 🚨 MODO REPORTE Z: Todos los tickets del día calendario
+        queryText += ` AND DATE(s.created_at AT TIME ZONE 'America/Caracas') = DATE(CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas') `;
     }
     
     // IMPORTANTE: Ordenamos por created_at para asegurar la cronología exacta

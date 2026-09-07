@@ -63,10 +63,10 @@ const openShift = async (initial_cash_usd, initial_cash_ves, registerId, userId,
             throw { status: 400, message: 'CONFLICTO_TURNO_ABIERTO', details: `Existe un turno fantasma (Turno #${checkGhosts.rows[0].id} en la Caja ${checkGhosts.rows[0].register_id}) del día de ayer sin cerrar. Por control interno, audite y cierre ese turno antes de iniciar operaciones hoy.` };
         }
 
-        // 🟢 Si pasa los escudos, insertamos el turno de forma segura
+        // 🟢 Si pasa los escudos, insertamos el turno de forma segura forzando la zona horaria
         const result = await client.query(`
-            INSERT INTO cash_shifts (initial_cash_usd, initial_cash_ves, status, register_id, user_id, empresa_id)
-            VALUES ($1, $2, 'ABIERTA', $3, $4, $5) RETURNING *
+            INSERT INTO cash_shifts (initial_cash_usd, initial_cash_ves, status, register_id, user_id, empresa_id, opened_at)
+            VALUES ($1, $2, 'ABIERTA', $3, $4, $5, CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas') RETURNING *
         `, [parseFloat(initial_cash_usd) || 0, parseFloat(initial_cash_ves) || 0, registerId, userId, empresaId]);
 
         await client.query('COMMIT');
@@ -226,10 +226,10 @@ const closeShift = async (payload, registerId, userId, userRole, empresaId) => {
         const diff_ves = safeDeclared.cash_ves - expected_ves;
 
         // Actualizamos usando los datos limpios de 'safeDeclared' y garantizando el ID exacto
-        // 🚨 SAAS: Agregamos empresa_id = $17 al filtro de seguridad
+        // 🚨 SAAS: Agregamos empresa_id = $17 al filtro de seguridad y forzamos hora de Caracas
         await client.query(`
             UPDATE cash_shifts SET 
-                closed_at = CURRENT_TIMESTAMP, status = 'CERRADA',
+                closed_at = CURRENT_TIMESTAMP AT TIME ZONE 'America/Caracas', status = 'CERRADA',
                 system_cash_usd=$1, system_cash_ves=$2, system_zelle=$3, system_pago_movil=$4, system_punto=$5,
                 real_cash_usd=$6, real_cash_ves=$7, real_zelle=$8, real_pago_movil=$9, real_punto=$10,
                 diff_usd=$11, diff_ves=$12, notes=$13, fiscal_z_report=$14

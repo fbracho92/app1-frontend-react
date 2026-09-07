@@ -50,15 +50,17 @@ const MovementRow = memo(({ mov, idx }) => {
                     )}
                 </div>
 
-                {/* Cantidades */}
+               {/* Cantidades */}
                 <div className="text-right flex flex-col items-end shrink-0">
                     <span className={`text-2xl font-black tracking-tighter tabular-nums ${isEntry ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {isEntry ? '+' : '-'}{mov.quantity}
+                        {/* 🚨 FIX UX PRO: parseFloat() asegura la limpieza nativa de ceros a la derecha sin alterar el tipo */}
+                        {isEntry ? '+' : '-'}{parseFloat(mov.quantity)}
                     </span>
                     <div className="flex items-center gap-1.5 mt-1 opacity-70 group-hover:opacity-100 transition-opacity">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Saldo</span>
                         <span className="text-xs font-black text-slate-700 bg-slate-200/50 px-1.5 py-0.5 rounded border border-slate-200">
-                            {mov.new_stock}
+                            {/* 🚨 FIX UX PRO: Aplica la misma limpieza al saldo final */}
+                            {parseFloat(mov.new_stock)}
                         </span>
                     </div>
                 </div>

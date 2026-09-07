@@ -107,13 +107,17 @@ export const useInventory = (onDataUpdated) => {
         setIsMovementModalOpen(true);
     };
 
-    // ENVIAR MOVIMIENTO (CORREGIDO: CÁLCULO DE STOCK REAL)
+    // ENVIAR MOVIMIENTO (CORREGIDO: CÁLCULO DE STOCK REAL CON DECIMALES)
     // ENVIAR MOVIMIENTO (NIVEL 2: GESTIÓN DE LOTES ROBUSTA)
     const handleMovementSubmit = async (e) => {
         e.preventDefault();
-        const qty = parseInt(movementForm.quantity);
+        
+        // 🚨 FIX UX PRO: Reemplazamos parseInt por parseFloat para admitir gramos/litros (Ej: 0.350)
+        const qty = parseFloat(movementForm.quantity);
 
-        if (!qty || qty <= 0) return Swal.fire('Error', 'Cantidad inválida', 'warning');
+        // 🚨 FIX: Cambiamos !qty por isNaN(qty) para una validación matemática más segura
+        if (isNaN(qty) || qty <= 0) return Swal.fire('Error', 'Cantidad inválida', 'warning');
+        
         if (movementType === 'IN' && !movementForm.document_ref) return Swal.fire('Atención', 'El Nro de Factura es obligatorio para entradas.', 'warning');
 
         // VALIDACIÓN: Si es una salida específica (Vencimiento o Merma), es obligatorio seleccionar un lote
@@ -128,7 +132,7 @@ export const useInventory = (onDataUpdated) => {
             await InventoryService.registerMovement({
                 product_id: movementProduct.id,
                 type: movementType,
-                quantity: qty,
+                quantity: qty, // 🚀 Ahora viaja el decimal exacto (Ej: 0.35) al servidor
                 document_ref: movementForm.document_ref,
                 reason: movementForm.reason,
                 cost_usd: movementForm.cost_usd,
