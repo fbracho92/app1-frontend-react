@@ -48,6 +48,7 @@ export const AdvancedReportsView = memo(({
     printReportZ, // <-- NUEVO: Acción Reporte Z
     
     handlePrintDeliveryReport,
+    handlePrintDirectoryReport,
     
     // Servicios y Utilidades
     InventoryService,
@@ -67,6 +68,7 @@ export const AdvancedReportsView = memo(({
     const [showOnlyDifferences, setShowOnlyDifferences] = useState(false);
     const [showHistoryView, setShowHistoryView] = useState(false);
     const [auditHistoryList, setAuditHistoryList] = useState([]);
+    const [directoryFilter, setDirectoryFilter] = useState('TODOS');
     
     return (
         /* --- VISTA: INTELIGENCIA DE NEGOCIOS (REDISEÑO PRO + DRILL DOWN + CIERRES) --- */
@@ -984,6 +986,51 @@ export const AdvancedReportsView = memo(({
         </Button>
     </div>
 </div>
+
+{/* 🚀 NUEVA TARJETA: DIRECTORIO MAESTRO DE TERCEROS */}
+<div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-lg transition-all">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+    <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-start gap-4 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                👥
+            </div>
+            <div>
+                <h3 className="text-lg font-black text-slate-800 tracking-tight leading-tight">Directorio Maestro</h3>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Control de Terceros</p>
+            </div>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-6 flex-1 font-medium leading-relaxed">
+            Reporte auditable de clientes, proveedores y transporte con datos fiscales para control.
+        </p>
+        
+        {/* 🛡️ SELECTOR DINÁMICO UX PRO */}
+        <div className="mb-4">
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">
+                Filtrar por Categoría
+            </label>
+            <select 
+                value={directoryFilter}
+                onChange={(e) => setDirectoryFilter(e.target.value)}
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-400 focus:bg-white transition-all shadow-inner cursor-pointer"
+            >
+                <option value="TODOS">📋 Mostrar Todos</option>
+                <option value="CLIENTE">👤 Solo Clientes</option>
+                <option value="PROVEEDOR">🏢 Solo Proveedores</option>
+                <option value="TRANSPORTE">🛵 Solo Transportistas</option>
+            </select>
+        </div>
+
+        <Button 
+            variant="primary" 
+            onClick={() => handlePrintDirectoryReport(directoryFilter)}
+            className="w-full !bg-blue-600 hover:!bg-blue-700 !py-3 shadow-md shadow-blue-200 active:scale-95 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            Descargar Directorio
+        </Button>
+    </div>
+</div>
         
 
                     </div> {/* <--- CIERRE DEL GRID DE TARJETAS LEGALES */}
@@ -1291,8 +1338,6 @@ export const AdvancedReportsView = memo(({
                     <div className="mt-8 pt-6 border-t border-slate-100">
                         
                     </div>
-                    
-                    
                     
                     {/* --- 🛡️ SECCIÓN: TRAZABILIDAD BCV (CERTIFICADO DE HONESTIDAD TÉCNICA) --- */}
                     <div className="mt-8 pt-6 border-t border-slate-100">

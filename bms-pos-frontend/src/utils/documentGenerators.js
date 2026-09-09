@@ -501,9 +501,8 @@ export const printPhysicalCountReport = (inventoryFilteredData, products, userId
 
     doc.save(`Toma_Fisica_Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
 };
-
-// --- NUEVO: REPORTE LEGAL DE CARTERA DE CRÃ‰DITO (MARCA BLANCA) ---
-export const printLegalDebtReport = async (ReportService, bcvRate) => {
+// --- NUEVO: REPORTE LEGAL DE CARTERA DE CREDITO (MARCA BLANCA BLINDADA) ---
+export const printLegalDebtReport = async (ReportService, bcvRate, userIdentity = null) => {
     try {
         Swal.fire({ title: 'Generando Reporte Legal...', didOpen: () => Swal.showLoading() });
         const res = await ReportService.getAgedDebt();
@@ -511,6 +510,14 @@ export const printLegalDebtReport = async (ReportService, bcvRate) => {
         Swal.close();
 
         if (debts.length === 0) return Swal.fire('Sin Deudas', 'No hay cuentas por cobrar pendientes.', 'info');
+
+        // ?? FASE MARCA BLANCA: Extraer datos reales del inquilino (SaaS)
+        const brand = userIdentity ? { ...tenantConfig, ...userIdentity } : tenantConfig;
+        const finalCompanyName = brand.companyName || brand.tradeName || tenantConfig.companyName || 'Empresa';
+        const finalCompanyDocument = brand.companyDocument || tenantConfig.companyDocument || 'J-00000000-0';
+        
+        // Anti-corrupci¨®n de acentos para el PDF
+        const safeName = finalCompanyName.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
 
         const doc = new jsPDF('l', 'mm', 'a4'); 
         const pageWidth = doc.internal.pageSize.width;
@@ -528,15 +535,16 @@ export const printLegalDebtReport = async (ReportService, bcvRate) => {
         doc.setFontSize(16);
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
-        doc.text("RELACIÃ“N ANALÃTICA DE CUENTAS POR COBRAR", 14, 12);
+        doc.text("RELACION ANALITICA DE CUENTAS POR COBRAR", 14, 12);
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text("CONTROL DE CARTERA DE CRÃ‰DITO Y VENCIMIENTOS", 14, 18);
+        doc.text("CONTROL DE CARTERA DE CREDITO Y VENCIMIENTOS", 14, 18);
 
+        // ?? INYECCI¨®N DE LA IDENTIDAD LEGAL
         doc.setFontSize(9);
-        doc.text(`RIF: ${tenantConfig.companyDocument}`, 14, 24);
-        doc.text(`RazÃ³n Social: ${tenantConfig.companyName}`, 14, 29);
+        doc.text(`RIF: ${finalCompanyDocument}`, 14, 24);
+        doc.text(`Razon Social: ${safeName}`, 14, 29);
 
         const dateStr = new Date().toLocaleDateString('es-VE');
         doc.text(`Fecha de Corte: ${dateStr}`, pageWidth - 14, 12, { align: 'right' });
@@ -545,14 +553,17 @@ export const printLegalDebtReport = async (ReportService, bcvRate) => {
 
         autoTable(doc, {
             startY: 40,
-            head: [['CLIENTE / RAZÃ“N SOCIAL', 'RIF/CI', 'NÂ° FACT', 'EMISIÃ“N', 'VENCIMIENTO', 'DÃAS VENC.', `SALDO (${tenantConfig.secondaryCurrency})`, `SALDO (${tenantConfig.primaryCurrency})`]],
+            head: [['CLIENTE / RAZON SOCIAL', 'RIF/CI', 'Nro FACT', 'EMISION', 'VENCIMIENTO', 'DIAS VENC.', `SALDO (${tenantConfig.secondaryCurrency})`, `SALDO (${tenantConfig.primaryCurrency})`]],
             body: debts.map(d => {
                 const daysOverdue = Math.ceil((new Date() - new Date(d.due_date)) / (1000 * 60 * 60 * 24));
                 const balanceBs = parseFloat(d.balance_usd) * bcvRate; 
+                
+                // Limpieza de caracteres para el nombre del cliente
+                const cleanFullName = d.full_name ? d.full_name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 35) : 'Desconocido';
 
                 return [
-                    d.full_name.substring(0, 35),
-                    d.id_number,
+                    cleanFullName,
+                    d.id_number || 'S/I',
                     `#${d.invoice_id}`,
                     new Date(d.emission_date).toLocaleDateString('es-VE'),
                     new Date(d.due_date).toLocaleDateString('es-VE'),
@@ -561,7 +572,7 @@ export const printLegalDebtReport = async (ReportService, bcvRate) => {
                     formatBs(balanceBs)
                 ];
             }),
-            styles: { fontSize: 8, cellPadding: 3 },
+            styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
             headStyles: {
                 fillColor: colors.header,
                 textColor: 255,
@@ -611,7 +622,7 @@ export const printLegalDebtReport = async (ReportService, bcvRate) => {
         doc.setTextColor(150);
         doc.setFont('helvetica', 'normal');
         doc.text("Este reporte refleja las cuentas por cobrar pendientes valorizadas a la tasa de cambio actual.", 14, finalY + 5);
-        doc.text("Base Legal: Normas Internacionales de InformaciÃ³n Financiera (NIC 21) y Normativa Nacional Vigente.", 14, finalY + 9);
+        doc.text("Base Legal: Normas Internacionales de Informacion Financiera (NIC 21) y Normativa Nacional Vigente.", 14, finalY + 9);
 
         doc.setDrawColor(150);
         doc.line(14, finalY + 25, 80, finalY + 25);
@@ -3035,4 +3046,133 @@ export const printDeliveryManagerReportPDF = (dateRange, historyData, bcvRate, t
     }
 
     doc.save(`Reporte_Logistica_Despachos_${new Date().getTime()}.pdf`);
+};
+
+// ============================================================================
+// ?? NUEVO: REPORTE MAESTRO DE TERCEROS (CLIENTES, PROVEEDORES, TRANSPORTE)
+// ============================================================================
+export const printDirectoryReportPDF = (directoryData, filterType, tenantConfig) => {
+    const doc = new jsPDF('p', 'mm', 'a4'); // Formato Vertical (Portrait)
+    const pageWidth = doc.internal.pageSize.width;
+    
+    // ?? PALETA DE COLORES CORPORATIVA
+    const colors = { 
+        primary: [30, 41, 59],     // Slate 800
+        text: [71, 85, 105],       // Slate 500
+        bgLight: [248, 250, 252],  // Slate 50
+        success: [16, 185, 129],   // Activo
+        alert: [245, 158, 11],     // Suspendido
+        cliente: [59, 130, 246],   // Azul (Cliente)
+        proveedor: [139, 92, 246], // Morado (Proveedor)
+        transporte: [100, 116, 139] // Gris (Transporte)
+    };
+
+    if (!directoryData || directoryData.length === 0) {
+        throw new Error("EMPTY_DATA");
+    }
+
+    // CABECERA DEL REPORTE
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 30, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text("DIRECTORIO MAESTRO DE TERCEROS", 14, 16);
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const safeName = (tenantConfig.companyName || 'Empresa').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    doc.text(`${safeName} | RIF: ${tenantConfig.companyDocument || 'J-00000000-0'}`, 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`FILTRO APLICADO`, pageWidth - 14, 16, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Categoria: ${filterType}`, pageWidth - 14, 22, { align: 'right' });
+
+    // PROCESAMIENTO DE LA TABLA
+    let contClientes = 0, contProveedores = 0, contTransporte = 0;
+
+    const tableBody = directoryData.map(contact => {
+        const id = contact.id ? `#${contact.id}` : 'S/I';
+        const type = (contact.type || 'CLIENTE').toUpperCase();
+        const name = (contact.full_name || contact.name || 'Sin Razon Social').substring(0, 35);
+        const docNumber = contact.id_number || 'S/I';
+        const phone = contact.phone || 'No registrado';
+        const status = (contact.status || 'ACTIVO').toUpperCase();
+
+        if (type === 'CLIENTE') contClientes++;
+        else if (type === 'PROVEEDOR') contProveedores++;
+        else if (type === 'TRANSPORTE') contTransporte++;
+
+        return [ id, type, name, docNumber, phone, status ];
+    });
+
+    // DIBUJAR LA TABLA
+    autoTable(doc, {
+        startY: 38,
+        head: [['ID', 'TIPO', 'RAZON SOCIAL / NOMBRE', 'CEDULA / RIF', 'TELEFONO', 'ESTATUS']],
+        body: tableBody,
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+            0: { cellWidth: 15, fontStyle: 'bold' },
+            1: { cellWidth: 32, fontStyle: 'bold' }, // ?? Ajuste: De 25 a 32 para evitar el salto de l¨ªnea en TRANSPORTE
+            2: { cellWidth: 'auto' }, 
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 },
+            5: { cellWidth: 20, halign: 'center', fontStyle: 'bold' }
+        },
+        alternateRowStyles: { fillColor: colors.bgLight },
+        didParseCell: function (data) {
+            if (data.section === 'body') {
+                if (data.column.index === 1) {
+                    if (data.cell.raw === 'CLIENTE') data.cell.styles.textColor = colors.cliente;
+                    if (data.cell.raw === 'PROVEEDOR') data.cell.styles.textColor = colors.proveedor;
+                    if (data.cell.raw === 'TRANSPORTE') data.cell.styles.textColor = colors.transporte;
+                }
+                if (data.column.index === 5) {
+                    if (data.cell.raw === 'ACTIVO') data.cell.styles.textColor = colors.success;
+                    else data.cell.styles.textColor = colors.alert;
+                }
+            }
+        }
+    });
+
+    // RESUMEN GERENCIAL
+    let finalY = doc.lastAutoTable.finalY + 10;
+    if (finalY > doc.internal.pageSize.height - 40) { doc.addPage(); finalY = 20; }
+
+    doc.setFillColor(...colors.bgLight);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, finalY, pageWidth - 28, 20, 3, 3, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.primary);
+    doc.setFont('helvetica', 'bold');
+    doc.text("RESUMEN DEL DIRECTORIO", 18, finalY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Clientes: ${contClientes}`, 18, finalY + 14);
+    doc.text(`Proveedores: ${contProveedores}`, 65, finalY + 14);
+    doc.text(`Transporte: ${contTransporte}`, 115, finalY + 14);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL REGISTROS: ${directoryData.length}`, pageWidth - 20, finalY + 14, { align: 'right' });
+
+    // Paginaci¨®n
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generado el: ${new Date().toLocaleString('es-VE')} | Sistema BMS Digital`, 14, doc.internal.pageSize.height - 8);
+        doc.text(`Pagina ${i} de ${pageCount}`, pageWidth - 14, doc.internal.pageSize.height - 8, { align: 'right' });
+    }
+
+    doc.save(`Directorio_${filterType}_${new Date().getTime()}.pdf`);
 };

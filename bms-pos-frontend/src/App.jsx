@@ -842,6 +842,81 @@ function MainApp({ user, handleLogout }) {
         }
     };
     
+    // 🚀 NUEVO: DISPARADOR DEL REPORTE DEL DIRECTORIO MAESTRO
+    const handlePrintDirectoryReport = async (filterType) => {
+        try {
+            Swal.fire({ 
+                title: 'Consultando Directorio...', 
+                text: 'Sincronizando con el Maestro de Terceros.', 
+                didOpen: () => Swal.showLoading() 
+            });
+            
+            let combinedData = [];
+
+            // 1. Extraer CLIENTES usando tu CustomerService nativo
+            if (filterType === 'TODOS' || filterType === 'CLIENTE') {
+                try {
+                    const resC = await CustomerService.getAll();
+                    const customers = resC.data || [];
+                    const mappedCustomers = customers.map(c => ({
+                        id: c.id,
+                        type: 'CLIENTE',
+                        full_name: c.full_name || c.name || 'Sin Nombre',
+                        id_number: c.id_number || 'S/I',
+                        phone: c.phone || 'No registrado',
+                        status: c.status || 'ACTIVO'
+                    }));
+                    combinedData = [...combinedData, ...mappedCustomers];
+                } catch (e) { console.error("Error clientes:", e); }
+            }
+
+            // 2. Extraer PROVEEDORES usando tu ProviderService nativo
+            if (filterType === 'TODOS' || filterType === 'PROVEEDOR') {
+                try {
+                    const resP = await ProviderService.getAll();
+                    const providers = resP.data || [];
+                    const mappedProviders = providers.map(p => ({
+                        id: p.id,
+                        type: 'PROVEEDOR',
+                        full_name: p.name || 'Sin Nombre',
+                        id_number: p.rif || 'S/I',
+                        phone: p.phone || 'No registrado',
+                        status: p.status || 'ACTIVO'
+                    }));
+                    combinedData = [...combinedData, ...mappedProviders];
+                } catch (e) { console.error("Error proveedores:", e); }
+            }
+
+            // 3. Extraer MOTORIZADOS usando el estado 'drivers'
+            if (filterType === 'TODOS' || filterType === 'TRANSPORTE') {
+                const mappedDrivers = (drivers || []).map(d => ({
+                    id: d.id,
+                    type: 'TRANSPORTE',
+                    full_name: d.name || 'Sin Nombre',
+                    id_number: d.id_number || 'S/I',
+                    phone: d.phone || 'No registrado',
+                    status: d.status || 'ACTIVO'
+                }));
+                combinedData = [...combinedData, ...mappedDrivers];
+            }
+
+            if (combinedData.length === 0) {
+                throw new Error("EMPTY_DATA");
+            }
+
+            DocGen.printDirectoryReportPDF(combinedData, filterType, user?.identity || tenantBrand);
+            Swal.close();
+            
+        } catch (error) {
+            console.error("Error en reporte de directorio:", error);
+            if (error.message === "EMPTY_DATA") {
+                Swal.fire('Directorio Vacío', `No hay registros bajo la categoría: ${filterType}.`, 'info');
+            } else {
+                Swal.fire('Error', 'No se pudo generar el reporte del directorio.', 'error');
+            }
+        }
+    };
+    
     const printDeliveryGuide = (order) => {
         const deliveryData = order.delivery_info || {};
         
@@ -888,7 +963,7 @@ function MainApp({ user, handleLogout }) {
         }
     };
     
-    const printLegalDebtReport = () => DocGen.printLegalDebtReport(ReportService, bcvRate);
+    const printLegalDebtReport = () => DocGen.printLegalDebtReport(ReportService, bcvRate, user?.identity || tenantBrand);
     
     const printSalesBookPDF = () => DocGen.printSalesBookPDF(reportDateRange, ReportService);
     
@@ -1445,6 +1520,7 @@ function MainApp({ user, handleLogout }) {
                     printLowStockReport={printLowStockReport}
                     printBatchExpirationReport={printBatchExpirationReport}
                     handlePrintDeliveryReport={handlePrintDeliveryReport}
+                    handlePrintDirectoryReport={handlePrintDirectoryReport}
                 />
                 ) : view === 'SAAS_MASTER' && user?.empresa_id === 1 ? (
                     <SaasMasterView />
