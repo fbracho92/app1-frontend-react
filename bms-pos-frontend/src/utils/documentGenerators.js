@@ -1762,13 +1762,20 @@ export const printClosingReport = (shift, tenantIdentity = null) => {
 };
 
 
-// --- FUNCIÃ“N GENERAR REPORTE PDF (DISEÃ‘O MODERNO: MARCA BLANCA) ---
-export const exportReportToPDF = (analyticsData, reportDateRange) => {
+// --- FUNCI¨®N GENERAR REPORTE PDF (DISE?O MODERNO: MARCA BLANCA FULL PRO) ---
+export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = null) => {
     if (!analyticsData || !analyticsData.salesOverTime) {
-        return Swal.fire('Sin datos', 'No hay informaciÃ³n para generar el reporte.', 'warning');
+        return Swal.fire('Sin datos', 'No hay informaci¨®n para generar el reporte.', 'warning');
     }
 
     const doc = new jsPDF();
+
+    // ?? EXTRACCI¨®N BLINDADA DE DATOS JUR¨ªDICOS (MULTI-INQUILINO)
+    const brandName = (tenantBrand?.companyName || tenantBrand?.tradeName || tenantConfig?.companyName || 'BMS Digital');
+    const safeName = brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const safeId = tenantBrand?.companyDocument || tenantBrand?.id_number || tenantConfig?.companyDocument || tenantConfig?.id_number || 'J-00000000-0';
+    const safePhone = tenantBrand?.companyPhone || tenantBrand?.phone || tenantConfig?.companyPhone || tenantConfig?.phone || '';
+    const safeAddress = (tenantBrand?.companyAddress || tenantBrand?.address || tenantConfig?.companyAddress || tenantConfig?.address || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     const colors = {
         primary: [0, 86, 179],   
@@ -1808,27 +1815,44 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
     doc.setFillColor(...colors.primary);
     doc.rect(0, 0, 210, 4, 'F');
 
-    doc.setFontSize(24);
+    doc.setFontSize(22);
     doc.setTextColor(...colors.darkText);
     doc.setFont('helvetica', 'bold');
     doc.text("Reporte Gerencial", 14, 25);
 
+    // ?? IMPRESI¨®N DE DATOS JUR¨ªDICOS MULTI-INQUILINO
+    let headerY = 31;
     doc.setFontSize(10);
+    doc.setTextColor(...colors.darkText);
+    doc.setFont('helvetica', 'bold');
+    doc.text(safeName, 14, headerY);
+    
+    doc.setFontSize(9);
     doc.setTextColor(...colors.lightText);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Inteligencia de Negocios ${tenantConfig.companyName}`, 14, 32);
+    headerY += 5;
+    doc.text(`RIF: ${safeId}`, 14, headerY);
+    
+    if (safePhone || safeAddress) {
+        headerY += 4;
+        const extraInfo = [safePhone ? `Tel: ${safePhone}` : '', safeAddress ? `Dir: ${safeAddress}` : ''].filter(Boolean).join(' | ');
+        doc.text(extraInfo.length > 95 ? extraInfo.substring(0, 95) + '...' : extraInfo, 14, headerY);
+    }
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...colors.primary);
-    doc.text(`Periodo: ${new Date(reportDateRange.start).toLocaleDateString()} â€?${new Date(reportDateRange.end).toLocaleDateString()}`, 14, 38);
+    headerY += 6;
+    const dateStart = new Date(reportDateRange.start).toLocaleDateString('es-VE');
+    const dateEnd = new Date(reportDateRange.end).toLocaleDateString('es-VE');
+    doc.text(`Periodo: ${dateStart} al ${dateEnd}`, 14, headerY);
 
     doc.setFontSize(8);
     doc.setTextColor(...colors.lightText);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generado: ${new Date().toLocaleString()}`, 196, 25, { align: 'right' });
+    doc.text(`Generado: ${new Date().toLocaleString('es-VE')}`, 196, 25, { align: 'right' });
 
 
-    let finalY = 50;
+    let finalY = headerY + 8;
     doc.setFontSize(12);
     doc.setTextColor(...colors.darkText);
     doc.setFont('helvetica', 'bold');
@@ -1849,8 +1873,8 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
     drawModernCard(
         14, finalY, cardWidth, cardHeight,
         "Dinero Recaudado",
-        `Ref ${totalUSD.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-        `${tenantConfig.primaryCurrency} ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+        `Ref ${totalUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `${tenantConfig.primaryCurrency} ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         colors.primary
     );
 
@@ -1866,8 +1890,8 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
     drawModernCard(
         14 + (cardWidth + gap) * 2, finalY, cardWidth, cardHeight,
         "Ticket Promedio",
-        `Ref ${ticketPromedioUSD.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-        `${tenantConfig.primaryCurrency} ${ticketPromedioVES.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+        `Ref ${ticketPromedioUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `${tenantConfig.primaryCurrency} ${ticketPromedioVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         ticketColor
     );
 
@@ -1889,7 +1913,7 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
 
     doc.setFontSize(11);
     doc.setTextColor(...colors.darkText);
-    doc.text("1. EvoluciÃ³n de Ventas Diarias", 14, finalY);
+    doc.text("1. Evolucion de Ventas Diarias", 14, finalY);
     finalY += 4;
 
     autoTable(doc, {
@@ -1897,10 +1921,10 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
         startY: finalY,
         head: [['Fecha', 'Ops', 'Recaudado (Ref)', `Recaudado (${tenantConfig.primaryCurrency})`]],
         body: analyticsData.salesOverTime.map(row => [
-            new Date(row.sale_date).toLocaleDateString(),
+            new Date(row.sale_date).toLocaleDateString('es-VE'),
             row.tx_count,
-            `Ref ${parseFloat(row.total_usd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-            `${tenantConfig.primaryCurrency} ${parseFloat(row.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+            `Ref ${parseFloat(row.total_usd).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            `${tenantConfig.primaryCurrency} ${parseFloat(row.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         ]),
         columnStyles: {
             0: { cellWidth: 35 },
@@ -1916,7 +1940,8 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
 
     doc.setFontSize(11);
     doc.setTextColor(...colors.darkText);
-    doc.text("2. Productos MÃ¡s Vendidos (Top 5)", 14, finalY);
+    // ?? TOP 10
+    doc.text("2. Productos Mas Vendidos (Top 10)", 14, finalY);
     finalY += 4;
 
     autoTable(doc, {
@@ -1924,10 +1949,11 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
         startY: finalY,
         head: [['Producto', 'Unidades', 'Ingreso (Ref)']], 
         headStyles: { ...cleanTableStyles.headStyles, fillColor: colors.secondary },
-        body: analyticsData.topProducts.map(row => [
-            row.name,
-            row.total_qty,
-            `Ref ${parseFloat(row.total_revenue).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+        // ?? CORTE EXACTO EN TOP 10 CON ESCUDO ANTI-UNDEFINED
+        body: (analyticsData.topProducts || []).slice(0, 10).map(row => [
+            (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+            `${parseFloat(row.total_qty || 0)}`,
+            `Ref ${parseFloat(row.total_revenue || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         ]),
         columnStyles: {
             1: { halign: 'center' },
@@ -1941,19 +1967,19 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
 
     doc.setFontSize(11);
     doc.setTextColor(...colors.darkText);
-    doc.text("3. Rendimiento por CategorÃ­a", 14, finalY);
+    doc.text("3. Rendimiento por Categoria", 14, finalY);
     finalY += 4;
 
     autoTable(doc, {
         ...cleanTableStyles,
         startY: finalY,
-        head: [['CategorÃ­a', 'ParticipaciÃ³n', 'Total (Ref)']],
-        body: analyticsData.salesByCategory.map(row => {
-            const percentage = totalUSD > 0 ? (parseFloat(row.total_usd) / totalUSD * 100).toFixed(1) : 0;
+        head: [['Categoria', 'Participacion', 'Total (Ref)']],
+        body: (analyticsData.salesByCategory || []).map(row => {
+            const percentage = totalUSD > 0 ? (parseFloat(row.total_usd || 0) / totalUSD * 100).toFixed(1) : 0;
             return [
-                row.category,
+                (row.category || 'Sin Categor¨ªa').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
                 `${percentage}%`,
-                `Ref ${parseFloat(row.total_usd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+                `Ref ${parseFloat(row.total_usd || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ]
         }),
         columnStyles: {
@@ -1970,7 +1996,7 @@ export const exportReportToPDF = (analyticsData, reportDateRange) => {
 
         doc.setFontSize(8);
         doc.setTextColor(...colors.lightText);
-        doc.text(`Sistema ${tenantConfig.companyName} - Reporte Gerencial`, 14, 290);
+        doc.text(`Sistema ${safeName} - Reporte Gerencial`, 14, 290);
         doc.text(`${i} / ${pageCount}`, 196, 290, { align: 'right' });
     }
 
@@ -3175,4 +3201,140 @@ export const printDirectoryReportPDF = (directoryData, filterType, tenantConfig)
     }
 
     doc.save(`Directorio_${filterType}_${new Date().getTime()}.pdf`);
+};
+
+// --- NUEVO: REPORTE ANAL¨ªTICO DE VENTAS POR CATEGOR¨ªA Y TODOS LOS PRODUCTOS (UX PRO) ---
+export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, bcvRate, tenantBrand = null) => {
+    if (!analyticsData || (!analyticsData.salesByCategory && !analyticsData.topProducts)) {
+        return Swal.fire('Sin datos', 'No hay informaci¨®n suficiente para generar el an¨¢lisis completo.', 'warning');
+    }
+
+    const brandName = tenantBrand?.companyName || tenantBrand?.tradeName || tenantConfig?.companyName || 'BMS Digital';
+    const safeName = brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const safeId = tenantBrand?.companyDocument || tenantBrand?.id_number || tenantConfig?.companyDocument || tenantConfig?.id_number || 'J-00000000-0';
+    const currency = tenantConfig?.primaryCurrency || 'Bs';
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+
+    const colors = {
+        primary: [30, 41, 59],     // Slate 800
+        secondary: [0, 86, 179],   // Azul Corporativo
+        darkText: [30, 41, 59],   
+        lightText: [100, 116, 139], 
+        bgLight: [248, 250, 252],  
+        border: [226, 232, 240],
+        success: [16, 185, 129]
+    };
+
+    // 1. Cabecera Corporativa Legal
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 32, 'F');
+
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text("ANALISIS INTEGRAL DE VENTAS Y PRODUCTOS", 14, 12);
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text("REPORTE GERENCIAL DE RENDIMIENTO (BIMONETARIO - RANGO COMPLETO)", 14, 17);
+    doc.text(`RIF: ${safeId}  |  Razon Social: ${safeName}`, 14, 23);
+
+    const dateStart = new Date(reportDateRange.start).toLocaleDateString('es-VE');
+    const dateEnd = new Date(reportDateRange.end).toLocaleDateString('es-VE');
+    doc.setFontSize(8);
+    doc.text(`Periodo: ${dateStart} al ${dateEnd}`, pageWidth - 14, 12, { align: 'right' });
+    doc.text(`Tasa Base BCV: Bs ${formatBs(bcvRate)}`, pageWidth - 14, 17, { align: 'right' });
+    doc.text(`Generado: ${new Date().toLocaleString('es-VE')}`, pageWidth - 14, 23, { align: 'right' });
+
+    let finalY = 40;
+
+    const cleanTableStyles = {
+        theme: 'striped',
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold', halign: 'left', cellPadding: 3, fontSize: 8 },
+        bodyStyles: { textColor: colors.darkText, fontSize: 8, cellPadding: 3 },
+        alternateRowStyles: { fillColor: colors.bgLight },
+        styles: { lineColor: colors.border, lineWidth: 0.1 }
+    };
+
+    // --- TABLA 1: RENDIMIENTO POR CATEGOR¨ªA (Bimonetario) ---
+    doc.setFontSize(11);
+    doc.setTextColor(...colors.darkText);
+    doc.setFont('helvetica', 'bold');
+    doc.text("1. Distribucion Consolidada por Categoria", 14, finalY);
+    finalY += 4;
+
+    const totalUSDGeneral = (analyticsData.salesByCategory || []).reduce((acc, c) => acc + parseFloat(c.total_usd || 0), 0);
+
+    autoTable(doc, {
+        ...cleanTableStyles,
+        startY: finalY,
+        head: [['CATEGORIA DE PRODUCTOS', 'PARTICIPACION', `TOTAL (${currency})`, 'TOTAL (Ref)']],
+        body: (analyticsData.salesByCategory || []).map(row => {
+            const totalUSD = parseFloat(row.total_usd || 0);
+            const totalVES = totalUSD * bcvRate;
+            const percentage = totalUSDGeneral > 0 ? ((totalUSD / totalUSDGeneral) * 100).toFixed(1) : 0;
+            return [
+                (row.category || 'Sin Categor¨ªa').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+                `${percentage}%`,
+                formatBs(totalVES),
+                `Ref ${totalUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            ];
+        }),
+        columnStyles: {
+            0: { fontStyle: 'bold' },
+            1: { halign: 'center', textColor: colors.lightText },
+            2: { halign: 'right' },
+            3: { halign: 'right', fontStyle: 'bold', textColor: colors.secondary }
+        }
+    });
+
+    finalY = doc.lastAutoTable.finalY + 14;
+    if (finalY > 220) { doc.addPage(); finalY = 20; }
+
+    // --- TABLA 2: LISTADO GENERAL Y EXTENDIDO DE TODOS LOS PRODUCTOS VENDIDOS ---
+    doc.setFontSize(11);
+    doc.setTextColor(...colors.darkText);
+    doc.text("2. Relacion General de Todos los Productos Vendidos", 14, finalY);
+    finalY += 4;
+
+    autoTable(doc, {
+        ...cleanTableStyles,
+        startY: finalY,
+        head: [['PRODUCTO / DESCRIPCION', 'UNIDADES', `INGRESO (${currency})`, 'INGRESO (Ref)']],
+        headStyles: { ...cleanTableStyles.headStyles, fillColor: [0, 86, 179] },
+        // ?? SE QUIT¨® EL `.slice(0, 10)` PARA QUE MUESTRE EL LISTADO COMPLETO DEL RANGO
+        body: (analyticsData.topProducts || []).map(row => {
+            const revUSD = parseFloat(row.total_revenue || 0);
+            const revVES = revUSD * bcvRate;
+            const cleanQty = parseFloat(row.total_qty || 0);
+            return [
+                (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+                `${cleanQty} UND`,
+                formatBs(revVES),
+                `Ref ${revUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            ];
+        }),
+        columnStyles: {
+            0: { fontStyle: 'bold' },
+            1: { halign: 'center' },
+            2: { halign: 'right' },
+            3: { halign: 'right', fontStyle: 'bold', textColor: colors.success }
+        }
+    });
+
+    // Paginaci¨®n y Pie de p¨¢gina legal
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(...colors.border);
+        doc.line(14, 285, 196, 285);
+        doc.setFontSize(7);
+        doc.setTextColor(...colors.lightText);
+        doc.text(`Analisis de Ventas por Categoria y Rango - ${safeName}`, 14, 290);
+        doc.text(`Pagina ${i} de ${pageCount}`, 196, 290, { align: 'right' });
+    }
+
+    doc.save(`Ventas_Completas_Por_Categoria_${reportDateRange.start}_al_${reportDateRange.end}.pdf`);
 };

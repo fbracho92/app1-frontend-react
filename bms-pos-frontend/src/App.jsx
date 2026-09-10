@@ -594,7 +594,28 @@ function MainApp({ user, handleLogout }) {
             setLowStock(Array.isArray(stockRes.data) ? stockRes.data : []);
 
             setTopDebtors(analyticsRes.data.topDebtors || []);
-            setAnalyticsData(analyticsRes.data);
+
+            // 🛡️ UX PRO BLINDADO: Filtrado Semántico Inicial (Permite "pseudo-servicios" como comida)
+            let initData = analyticsRes.data;
+            if (initData) {
+                // 1. Filtramos Productos Estrella excluyendo SOLO palabras clave logísticas/financieras
+                initData.topProducts = (initData.topProducts || []).filter(item => {
+                    const uName = (item.name || '').toUpperCase();
+                    // Ya NO filtramos por "is_service". Bloqueamos estrictamente por nombre:
+                    return !uName.includes('DELIVERY') && 
+                           !uName.includes('DESPACHO') && 
+                           !uName.includes('AVANCE') && 
+                           !uName.includes('FLETE');
+                }).slice(0, 5);
+
+                // 2. Filtramos Categorías Fantasmas
+                initData.salesByCategory = (initData.salesByCategory || []).filter(item => {
+                    const cat = (item.category || '').toUpperCase();
+                    // Bloqueamos solo categorías netamente logísticas
+                    return !cat.includes('DELIVERY') && !cat.includes('DESPACHO');
+                });
+            }
+            setAnalyticsData(initData);
 
             const rawSales = Array.isArray(salesRes.data) ? salesRes.data : [];
             const sales = rawSales.map(sale => ({
@@ -741,7 +762,7 @@ function MainApp({ user, handleLogout }) {
         }
     };
 
-    // 🚨 [ADAPTACIÓN] FETCH DE REPORTES AVANZADOS
+   // 🚨 [ADAPTACIÓN] FETCH DE REPORTES AVANZADOS
     const fetchAdvancedReport = async () => {
         try {
             Swal.fire({ title: 'Generando Estadísticas...', didOpen: () => Swal.showLoading() });
@@ -755,7 +776,28 @@ function MainApp({ user, handleLogout }) {
                 ReportService.getConnectivityLogs() // 🚨 Carga de logs de auditoría
             ]);
 
-            setAnalyticsData(analyticsRes.data);
+            // 🛡️ UX PRO BLINDADO: Filtrado Semántico (Permite "pseudo-servicios" como la comida)
+            let rawData = analyticsRes.data;
+            if (rawData) {
+                // 1. Limpiamos Productos Estrella excluyendo SOLO palabras clave logísticas/financieras
+                rawData.topProducts = (rawData.topProducts || []).filter(item => {
+                    const uName = (item.name || '').toUpperCase();
+                    // Ya NO filtramos por "is_service". Bloqueamos estrictamente por nombre:
+                    return !uName.includes('DELIVERY') && 
+                           !uName.includes('DESPACHO') && 
+                           !uName.includes('AVANCE') && 
+                           !uName.includes('FLETE');
+                }).slice(0, 5);
+
+                // 2. Limpiamos Categorías Fantasmas
+                rawData.salesByCategory = (rawData.salesByCategory || []).filter(item => {
+                    const cat = (item.category || '').toUpperCase();
+                    // Bloqueamos solo categorías netamente logísticas
+                    return !cat.includes('DELIVERY') && !cat.includes('DESPACHO');
+                });
+            }
+
+            setAnalyticsData(rawData); // 👈 Ahora inyecta la data limpia
             setConnectivityLogs(logsRes.data || []); // 🚨 Seteo de logs para la vista
             
             Swal.close();
@@ -809,6 +851,7 @@ function MainApp({ user, handleLogout }) {
     // =========================================================================
     const printKardexReport = () => DocGen.printKardexReport(kardexProduct, kardexHistory, bcvRate, user?.identity);
     const printInventoryAuditPDF = () => DocGen.printInventoryAuditPDF(products, bcvRate, user?.identity);
+    const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange) => DocGen.printCategorySalesAnalyticsPDF(analyticsData, reportDateRange, bcvRate, user?.identity || tenantBrand);
     // 1. Declara las funciones apuntando al generador
     const printLowStockReport = () => DocGen.printLowStockReportPDF(products, bcvRate, user?.identity);
     const printBatchExpirationReport = () => DocGen.printBatchExpirationReportPDF(products, bcvRate, user?.identity);
@@ -976,7 +1019,7 @@ function MainApp({ user, handleLogout }) {
     };
     // 🚀 INYECCIÓN DINÁMICA DE MARCA BLANCA EN REPORTE DE CIERRE
     const printClosingReport = (shift) => DocGen.printClosingReport(shift, user?.identity || tenantBrand);
-    const exportReportToPDF = () => DocGen.exportReportToPDF(analyticsData, reportDateRange);
+    const exportReportToPDF = () => DocGen.exportReportToPDF(analyticsData, reportDateRange, tenantBrand);
     // =========================================================================
 
     // === INYECTAR LÓGICA DE MÁQUINA FISCAL (SENIAT) ===
@@ -1521,6 +1564,7 @@ function MainApp({ user, handleLogout }) {
                     printBatchExpirationReport={printBatchExpirationReport}
                     handlePrintDeliveryReport={handlePrintDeliveryReport}
                     handlePrintDirectoryReport={handlePrintDirectoryReport}
+                    printCategorySalesAnalyticsPDF={printCategorySalesAnalyticsPDF}
                 />
                 ) : view === 'SAAS_MASTER' && user?.empresa_id === 1 ? (
                     <SaasMasterView />

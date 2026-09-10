@@ -49,6 +49,7 @@ export const AdvancedReportsView = memo(({
     
     handlePrintDeliveryReport,
     handlePrintDirectoryReport,
+    printCategorySalesAnalyticsPDF,
     
     // Servicios y Utilidades
     InventoryService,
@@ -1028,6 +1029,59 @@ export const AdvancedReportsView = memo(({
         >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             Descargar Directorio
+        </Button>
+    </div>
+</div>
+
+{/* 🚀 NUEVA TARJETA: ANÁLISIS DE CATEGORÍAS Y PRODUCTOS ESTRELLA */}
+<div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-lg transition-all">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+    <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-start gap-4 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                ⭐
+            </div>
+            <div>
+                <h3 className="text-lg font-black text-slate-800 tracking-tight leading-tight">Categorías & Productos Estrella</h3>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Análisis Bimonetario (Bs / Ref)</p>
+            </div>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-6 flex-1 font-medium leading-relaxed">
+            Reporte gerencial por rango de fechas que desglosa el rendimiento de ventas por categoría y el Top 10 de productos estrella.
+        </p>
+        
+        {/* Selector de Fechas Inherente a la Tarjeta */}
+        <div className="flex items-center gap-2 mb-5 bg-slate-50 p-2 rounded-xl border border-slate-100 shadow-inner">
+            <input 
+                type="date" 
+                value={reportDateRange.start} 
+                onChange={(e) => setReportDateRange(prev => ({ ...prev, start: e.target.value }))} 
+                className="bg-transparent text-xs font-bold text-slate-700 w-full outline-none cursor-pointer" 
+            />
+            <span className="text-slate-300 font-bold">➜</span>
+            <input 
+                type="date" 
+                value={reportDateRange.end} 
+                onChange={(e) => setReportDateRange(prev => ({ ...prev, end: e.target.value }))} 
+                className="bg-transparent text-xs font-bold text-slate-700 w-full outline-none cursor-pointer" 
+            />
+        </div>
+
+        <Button 
+            variant="primary" 
+            onClick={() => {
+                if (!analyticsData) {
+                    fetchAdvancedReport().then(() => {
+                        printCategorySalesAnalyticsPDF(analyticsData, reportDateRange);
+                    });
+                } else {
+                    printCategorySalesAnalyticsPDF(analyticsData, reportDateRange);
+                }
+            }}
+            className="w-full !bg-blue-600 hover:!bg-blue-700 !py-3 shadow-md shadow-blue-200 active:scale-95 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            Descargar Reporte Estrella
         </Button>
     </div>
 </div>
