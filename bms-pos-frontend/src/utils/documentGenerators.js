@@ -3258,6 +3258,11 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         styles: { lineColor: colors.border, lineWidth: 0.1 }
     };
 
+    // --- C¨¢LCULOS DE TOTALES GENERALES ---
+    const totalUSDGeneral = (analyticsData.salesByCategory || []).reduce((acc, c) => acc + parseFloat(c.total_usd || 0), 0);
+    const totalVESGeneral = totalUSDGeneral * bcvRate;
+    const totalUnidadesGeneral = (analyticsData.topProducts || []).reduce((acc, p) => acc + parseFloat(p.total_qty || 0), 0);
+
     // --- TABLA 1: RENDIMIENTO POR CATEGOR¨ªA (Bimonetario) ---
     doc.setFontSize(11);
     doc.setTextColor(...colors.darkText);
@@ -3265,28 +3270,51 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
     doc.text("1. Distribucion Consolidada por Categoria", 14, finalY);
     finalY += 4;
 
-    const totalUSDGeneral = (analyticsData.salesByCategory || []).reduce((acc, c) => acc + parseFloat(c.total_usd || 0), 0);
+    const catBody = (analyticsData.salesByCategory || []).map(row => {
+        const totalUSD = parseFloat(row.total_usd || 0);
+        const totalVES = totalUSD * bcvRate;
+        const percentage = totalUSDGeneral > 0 ? ((totalUSD / totalUSDGeneral) * 100).toFixed(1) : 0;
+        
+        // ??? CORRECCI¨®N CERTIFICADA: Limpieza estricta anti-mojibake para evitar caracteres extra?os en tildes
+        let catName = row.category ? row.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'Sin Categoria';
+        if (catName.toLowerCase().includes('categoria') || catName.toLowerCase().includes('categora')) {
+            catName = 'Sin Categoria';
+        }
+
+        return [
+            catName,
+            `${percentage}%`,
+            formatBs(totalVES),
+            `Ref ${totalUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        ];
+    });
+
+    // ?? FILA DE TOTALES GENERALES - TABLA 1
+    catBody.push([
+        'TOTAL GENERAL',
+        '100.0%',
+        formatBs(totalVESGeneral),
+        `Ref ${totalUSDGeneral.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ]);
 
     autoTable(doc, {
         ...cleanTableStyles,
         startY: finalY,
         head: [['CATEGORIA DE PRODUCTOS', 'PARTICIPACION', `TOTAL (${currency})`, 'TOTAL (Ref)']],
-        body: (analyticsData.salesByCategory || []).map(row => {
-            const totalUSD = parseFloat(row.total_usd || 0);
-            const totalVES = totalUSD * bcvRate;
-            const percentage = totalUSDGeneral > 0 ? ((totalUSD / totalUSDGeneral) * 100).toFixed(1) : 0;
-            return [
-                (row.category || 'Sin Categor¨ªa').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
-                `${percentage}%`,
-                formatBs(totalVES),
-                `Ref ${totalUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            ];
-        }),
+        body: catBody,
         columnStyles: {
             0: { fontStyle: 'bold' },
             1: { halign: 'center', textColor: colors.lightText },
             2: { halign: 'right' },
             3: { halign: 'right', fontStyle: 'bold', textColor: colors.secondary }
+        },
+        didParseCell: function(data) {
+            // Estilo resaltado para la fila de cierre
+            if (data.section === 'body' && data.row.index === catBody.length - 1) {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.fillColor = [226, 232, 240];
+                data.cell.styles.textColor = [15, 23, 42];
+            }
         }
     });
 
@@ -3299,28 +3327,45 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
     doc.text("2. Relacion General de Todos los Productos Vendidos", 14, finalY);
     finalY += 4;
 
+    const prodBody = (analyticsData.topProducts || []).map(row => {
+        const revUSD = parseFloat(row.total_revenue || 0);
+        const revVES = revUSD * bcvRate;
+        const cleanQty = parseFloat(row.total_qty || 0);
+        return [
+            (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+            `${cleanQty} UND`,
+            formatBs(revVES),
+            `Ref ${revUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        ];
+    });
+
+    // ?? FILA DE TOTALES GENERALES - TABLA 2
+    prodBody.push([
+        'TOTAL GENERAL ACUMULADO',
+        `${totalUnidadesGeneral} UND`,
+        formatBs(totalVESGeneral),
+        `Ref ${totalUSDGeneral.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ]);
+
     autoTable(doc, {
         ...cleanTableStyles,
         startY: finalY,
         head: [['PRODUCTO / DESCRIPCION', 'UNIDADES', `INGRESO (${currency})`, 'INGRESO (Ref)']],
         headStyles: { ...cleanTableStyles.headStyles, fillColor: [0, 86, 179] },
-        // ?? SE QUIT¨® EL `.slice(0, 10)` PARA QUE MUESTRE EL LISTADO COMPLETO DEL RANGO
-        body: (analyticsData.topProducts || []).map(row => {
-            const revUSD = parseFloat(row.total_revenue || 0);
-            const revVES = revUSD * bcvRate;
-            const cleanQty = parseFloat(row.total_qty || 0);
-            return [
-                (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
-                `${cleanQty} UND`,
-                formatBs(revVES),
-                `Ref ${revUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            ];
-        }),
+        body: prodBody,
         columnStyles: {
             0: { fontStyle: 'bold' },
             1: { halign: 'center' },
             2: { halign: 'right' },
             3: { halign: 'right', fontStyle: 'bold', textColor: colors.success }
+        },
+        didParseCell: function(data) {
+            // Estilo resaltado para la fila de cierre
+            if (data.section === 'body' && data.row.index === prodBody.length - 1) {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.fillColor = [226, 232, 240];
+                data.cell.styles.textColor = [15, 23, 42];
+            }
         }
     });
 
