@@ -41,6 +41,10 @@ import { LoginScreen } from './views/LoginScreen';
 import { SaasMasterView } from './views/SaasMasterView';
 
 import { tenantConfig } from './config/tenantConfig';
+import { TableQRModal } from './views/TableQRModal';
+import { PublicCatalogView } from './views/PublicCatalogView';
+
+
 import {
     ProductService,
     SaleService,
@@ -152,6 +156,8 @@ function MainApp({ user, handleLogout }) {
     const [analyticsData, setAnalyticsData] = useState(null);
     
     const [isSequenceModalOpen, setIsSequenceModalOpen] = useState(false);
+    
+    const [showTableQRModal, setShowTableQRModal] = useState(false);
     
     // 🚨 1. PUENTE ANTI-PANTALLA BLANCA (Resuelve la dependencia circular de React)
     const addToCartRef = useRef(null);
@@ -435,14 +441,25 @@ function MainApp({ user, handleLogout }) {
         };
     }, []); // 🚨 CLAVE: Arreglo vacío. Al ser fijo, solo se renderiza una vez al cargar el sistema.
     
-    useEffect(() => {
-        // 🚨 CAMBIO QUIRÚRGICO: Solo pedir datos si el usuario ya inició sesión
-        if (user) {
-            fetchData();
-            if(typeof fetchHeldOrders === 'function') fetchHeldOrders(); 
-            if(typeof fetchDrivers === 'function') fetchDrivers(); 
+    // 1. Carga inicial al autenticar sesión
+useEffect(() => {
+    if (user) {
+        fetchData();
+        if(typeof fetchHeldOrders === 'function') fetchHeldOrders(); 
+        if(typeof fetchDrivers === 'function') fetchDrivers(); 
+    }
+}, [user]);
+
+// 2. Auto-polling silencioso UX PRO (Sincronización QR en tiempo real sin F5)
+useEffect(() => {
+    if (!user) return;
+    const intervalId = setInterval(() => {
+        if (typeof fetchHeldOrders === 'function') {
+            fetchHeldOrders();
         }
-    }, [user]);
+    }, 8000);
+    return () => clearInterval(intervalId);
+}, [user]);
 
     useEffect(() => {
         if (view === 'CUSTOMERS') {
@@ -1565,6 +1582,7 @@ function MainApp({ user, handleLogout }) {
                     handlePrintDeliveryReport={handlePrintDeliveryReport}
                     handlePrintDirectoryReport={handlePrintDirectoryReport}
                     printCategorySalesAnalyticsPDF={printCategorySalesAnalyticsPDF}
+                    setShowTableQRModal={setShowTableQRModal}
                 />
                 ) : view === 'SAAS_MASTER' && user?.empresa_id === 1 ? (
                     <SaasMasterView />
@@ -1771,6 +1789,15 @@ function MainApp({ user, handleLogout }) {
                 isOpen={isSequenceModalOpen} 
                 onClose={() => setIsSequenceModalOpen(false)} 
             />
+
+            {/* 🚀 MODAL GENERADOR DE CÓDIGOS QR PARA MESAS Y WI-FI */}
+            <TableQRModal 
+                isOpen={showTableQRModal} 
+                onClose={() => setShowTableQRModal(false)} 
+                tenantBrand={tenantBrand} 
+                bcvRate={bcvRate} 
+                products={products} 
+            />
             
         </div>
     );
@@ -1847,6 +1874,15 @@ export default function App() {
             }
         });
     };
+
+    // =========================================================
+    // 🚀 🛡️ INTERCEPTOR PÚBLICO BLINDADO (UX PRO)
+    // Se ejecuta ANTES de exigir login. Bloquea el acceso al sistema
+    // interno y muestra ÚNICAMENTE el catálogo de solo lectura.
+    // =========================================================
+    if (window.location.pathname.includes('/catalogo')) {
+        return <PublicCatalogView />;
+    }
 
     // 3. El Portero: Mientras carga, mostramos el spinner
     if (checkingSession) {

@@ -18,6 +18,24 @@ const saveOrder = async (req, res) => {
     }
 };
 
+// 🚀 [NUEVO] CONTROLADOR PÚBLICO UX PRO: Recibe órdenes del Catálogo QR sin pedir login
+const savePublicOrder = async (req, res) => {
+    try {
+        // Leemos el tenant_id directo del body porque el cliente en la mesa no tiene Token
+        const { referenceName, cartData, tenant_id } = req.body;
+        
+        if (!referenceName || !cartData || cartData.length === 0 || !tenant_id) {
+            return res.status(400).json({ message: 'Datos incompletos desde el Catálogo' });
+        }
+        
+        // Usamos el mismo servicio blindado, pasándole el tenant_id del QR
+        const order = await HeldOrderService.saveOrder(referenceName, cartData, tenant_id);
+        res.status(201).json({ message: 'Orden enviada a caja con éxito', order });
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'Error al procesar orden pública' });
+    }
+};
+
 const getOrders = async (req, res) => {
     try {
         // 🚨 SAAS: Extraemos el ID de la empresa
@@ -42,4 +60,4 @@ const deleteOrder = async (req, res) => {
     }
 };
 
-module.exports = { saveOrder, getOrders, deleteOrder };
+module.exports = { saveOrder, savePublicOrder, getOrders, deleteOrder };

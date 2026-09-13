@@ -45,6 +45,13 @@ const migrations = [
             difference DECIMAL(10, 3) NOT NULL,
             unit_cost_usd DECIMAL(15, 2) NOT NULL
         );`
+    },
+    // =======================================================================
+    // 🚨 NUEVAS MIGRACIONES: CATÁLOGO DIGITAL UX PRO
+    // =======================================================================
+    {
+        name: "Añadir columna 'description' a productos para Catálogo QR",
+        query: `ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT;`
     }
 ];
 

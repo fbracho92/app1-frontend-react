@@ -39,6 +39,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/auth', authRoutes); // 🚨 Nueva
 
 // --- 3. REGISTRAR RUTAS DE LA API (Sin obviar nada) ---
+const heldOrderController = require('./controllers/heldOrder.controller');
+app.post('/api/public/held-orders', heldOrderController.savePublicOrder);
+
 app.use('/api/master', verifyToken, saasRoutes);
 app.use('/api/sales', verifyToken, checkLicense, saleRoutes);          // Ventas y Anulaciones
 app.use('/api/users', verifyToken, checkLicense, userRoutes);

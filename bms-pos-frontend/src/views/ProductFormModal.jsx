@@ -1,3 +1,4 @@
+import { compressImage } from '../utils/imageCompressor';
 import React from 'react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -101,7 +102,23 @@ export const ProductFormModal = ({
                                             <span className="text-2xl mb-2">🔄</span>
                                             <span className="text-xs font-bold uppercase">Cambiar Foto / Icono</span>
                                         </div>
-                                        <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={(e) => handleImageRead(e.target.files[0], (base64) => setProductForm({ ...productForm, icon_emoji: base64 }))} />
+                                        <input 
+                                            id="file-upload" 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={async (e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    try {
+                                                        const optimizedBase64 = await compressImage(file, 300, 300, 0.75);
+                                                        setProductForm({ ...productForm, icon_emoji: optimizedBase64 });
+                                                    } catch (err) {
+                                                        console.error("Error comprimiendo imagen:", err);
+                                                    }
+                                                }
+                                            }} 
+                                        />
                                     </div>
 
                                     {productForm.icon_emoji?.startsWith('data:image') && (
@@ -154,6 +171,26 @@ export const ProductFormModal = ({
                                             placeholder="Escanee..."
                                             className="[&_input]:font-mono [&_input]:text-slate-500"
                                         />
+                                    </div>
+                                    
+                                    {/* 🚀 [NUEVO] DESCRIPCIÓN PARA CATÁLOGO PÚBLICO (OPCIONAL) */}
+                                    <div className="mt-2">
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <label className="text-xs font-black text-slate-600 uppercase tracking-wider ml-1">
+                                                Descripción / Ingredientes (Opcional)
+                                            </label>
+                                            <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Visible en QR</span>
+                                        </div>
+                                        <textarea
+                                            value={productForm.description || ''}
+                                            onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                                            rows={2}
+                                            placeholder="Ej: Masa madre de 48h, costra crujiente. Contiene gluten."
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-3.5 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none shadow-inner"
+                                        />
+                                        <p className="text-[9px] text-slate-400 font-bold mt-1 pl-2">
+                                            Si se deja vacío, el catálogo solo mostrará el título y precio.
+                                        </p>
                                     </div>
                                 </div>
                             </div>

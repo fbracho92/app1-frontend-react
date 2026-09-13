@@ -44,6 +44,7 @@ export const AdvancedReportsView = memo(({
     printBatchExpirationReport,
     
     printClosingReport,
+    setShowTableQRModal,
     printReportX, // <-- NUEVO: Acción Reporte X
     printReportZ, // <-- NUEVO: Acción Reporte Z
     
@@ -1082,6 +1083,33 @@ export const AdvancedReportsView = memo(({
         >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             Descargar Reporte Estrella
+        </Button>
+    </div>
+</div>
+
+{/* 🚀 NUEVA TARJETA: GENERADOR DE QR PARA MESAS Y WI-FI */}
+<div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-lg transition-all">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+    <div className="relative z-10 flex flex-col h-full">
+        <div className="flex items-start gap-4 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                📱
+            </div>
+            <div>
+                <h3 className="text-lg font-black text-slate-800 tracking-tight leading-tight">Códigos QR por Ubicación</h3>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">CATÁLOGO DIGITAL & WI-FI</p>
+            </div>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-6 flex-1 font-medium leading-relaxed">
+            Genera e imprime códigos QR personalizados para mesas, pasillos, mostradores o consultorios con precios bimonetarios en tiempo real y conexión Wi-Fi automática.
+        </p>
+
+        <Button 
+            variant="primary" 
+            onClick={() => setShowTableQRModal(true)} // 👈 USAMOS LA PROP DIRECTA
+            className="w-full !bg-purple-600 hover:!bg-purple-700 !py-3 shadow-md shadow-purple-200 active:scale-95 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+            <span>✨</span> Configurar y Generar QR
         </Button>
     </div>
 </div>

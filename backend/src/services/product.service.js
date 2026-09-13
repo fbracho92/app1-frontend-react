@@ -14,6 +14,7 @@ const getAllProducts = async (empresaId) => {
             p.id, p.name, p.category, p.price_usd, p.icon_emoji, 
             p.is_taxable, p.barcode, p.status, p.last_stock_update, 
             p.is_perishable, p.is_raw_material, p.is_service, p.unit_measure,
+            p.description, -- 🚀 [NUEVO] Extraemos la descripción para el Catálogo QR
             CASE 
                 WHEN p.is_service = TRUE THEN 0 
                 ELSE COALESCE(SUM(pb.stock), 0) 
@@ -39,6 +40,7 @@ const getAllProducts = async (empresaId) => {
             stock: parseFloat(product.stock) || 0,
             // 🚨 BLINDAJE: Garantizamos que el frontend siempre reciba un string válido
             unit_measure: product.unit_measure || 'UND',
+            description: product.description || '', // 🚀 Evitamos enviar nulls al frontend
             expiration_date: product.expiration_date ? new Date(product.expiration_date).toISOString().split('T')[0] : null
         };
     });
@@ -51,8 +53,8 @@ const getBatches = async (id, empresaId) => {
 };
 
 const upsertProduct = async (data, empresaId) => {
-    // 🚨 1. Extraemos unit_measure del objeto data
-    const { id, name, category, price_usd, stock, icon_emoji, is_taxable, barcode, status, expiration_date, is_raw_material, is_service, unit_measure } = data;
+    // 🚨 1. Extraemos unit_measure y description del objeto data
+    const { id, name, category, price_usd, stock, icon_emoji, is_taxable, barcode, status, expiration_date, is_raw_material, is_service, unit_measure, description } = data;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -65,28 +67,29 @@ const upsertProduct = async (data, empresaId) => {
         // 🚨 BLINDAJE CONTRA EL ERROR 500 (Código de barras vacío)
         const finalBarcode = (barcode && barcode.trim() !== '') ? barcode.trim() : null;
         
-        // 🚨 2. Si llega vacío del frontend, forzamos 'UND' por seguridad
+        // 🚨 2. Sanitización de textos opcionales
         const safeUnitMeasure = unit_measure || 'UND';
+        const safeDescription = (description && description.trim() !== '') ? description.trim() : null; // 🚀 Si lo borran, guarda null
 
         let result;
         if (id) {
-            // 🚨 3. UPDATE: Agregamos unit_measure=$13 y desplazamos empresa_id a $14
+            // 🚨 3. UPDATE: Indexamos cuidadosamente la description en la posición $15
             result = await client.query(`
                 UPDATE products SET name=$1, category=$2, price_usd=$3, icon_emoji=$4, is_taxable=$5, barcode=$6, status=$7, 
-                expiration_date=$8, is_perishable=$9, is_raw_material=$11, is_service=$12, unit_measure=$13, last_stock_update=CURRENT_TIMESTAMP 
+                expiration_date=$8, is_perishable=$9, is_raw_material=$11, is_service=$12, unit_measure=$13, description=$15, last_stock_update=CURRENT_TIMESTAMP 
                 WHERE id=$10 AND empresa_id=$14 RETURNING *`, 
-                [name, category, price_usd, icon_emoji, isTaxableVal, finalBarcode, status || 'ACTIVE', expirationVal, isPerishableVal, id, isRawMaterialVal, isServiceVal, safeUnitMeasure, empresaId]);
+                [name, category, price_usd, icon_emoji, isTaxableVal, finalBarcode, status || 'ACTIVE', expirationVal, isPerishableVal, id, isRawMaterialVal, isServiceVal, safeUnitMeasure, empresaId, safeDescription]);
             
             if (result.rowCount === 0) throw new Error("Producto no encontrado o acceso denegado");
         } else {
             // 🚨 4. BLINDAJE DECIMALES: Cambiamos parseInt a parseFloat para permitir stock inicial fraccionado (Ej: 10.500 Kg)
             const initialStock = isServiceVal ? 0 : (parseFloat(stock) || 0);
             
-            // 🚨 5. INSERT: Agregamos unit_measure y desplazamos empresa_id a $14
+            // 🚨 5. INSERT: Agregamos description en la posición $15
             result = await client.query(`
-                INSERT INTO products (name, category, price_usd, stock, icon_emoji, is_taxable, barcode, status, expiration_date, is_perishable, is_raw_material, is_service, unit_measure, empresa_id) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`, 
-                [name, category, price_usd, initialStock, icon_emoji, isTaxableVal, finalBarcode, status || 'ACTIVE', expirationVal, isPerishableVal, isRawMaterialVal, isServiceVal, safeUnitMeasure, empresaId]);
+                INSERT INTO products (name, category, price_usd, stock, icon_emoji, is_taxable, barcode, status, expiration_date, is_perishable, is_raw_material, is_service, unit_measure, empresa_id, description) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`, 
+                [name, category, price_usd, initialStock, icon_emoji, isTaxableVal, finalBarcode, status || 'ACTIVE', expirationVal, isPerishableVal, isRawMaterialVal, isServiceVal, safeUnitMeasure, empresaId, safeDescription]);
             
             if (initialStock > 0 && !isServiceVal) {
                 const pid = result.rows[0].id;
