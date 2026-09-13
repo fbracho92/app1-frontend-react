@@ -42,9 +42,6 @@ app.use('/api/auth', authRoutes); // 🚨 Nueva
 const heldOrderController = require('./controllers/heldOrder.controller');
 app.post('/api/public/held-orders', heldOrderController.savePublicOrder);
 
-const productController = require('./controllers/product.controller');
-app.get('/api/products/public', productController.getPublicAll);
-
 app.use('/api/master', verifyToken, saasRoutes);
 app.use('/api/sales', verifyToken, checkLicense, saleRoutes);          // Ventas y Anulaciones
 app.use('/api/users', verifyToken, checkLicense, userRoutes);

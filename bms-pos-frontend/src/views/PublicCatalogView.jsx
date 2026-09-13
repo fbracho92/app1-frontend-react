@@ -49,10 +49,7 @@ export function PublicCatalogView() {
 
                 const [rateRes, prodRes] = await Promise.all([
                     SettingsService.getExchangeRate(),
-                    fetch(`${API_URL}/products/public?tenant=${tenantId}`).then(res => {
-                        if (!res.ok) throw new Error("Error al cargar el catálogo público");
-                        return res.json();
-                    }).then(data => ({ data }))
+                    ProductService.getAll() 
                 ]);
                 
                 // Si el componente se desmontó mientras cargaba, abortamos para no crashear

@@ -70,18 +70,4 @@ const getAuditDetails = async (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }); }
 };
 
-// 🚀 [NUEVO] Endpoint público para el Catálogo QR (Sin requerir token de sesión)
-const getPublicAll = async (req, res) => {
-    try {
-        // Extraemos el tenant de la URL del QR (ej: ?tenant=1)
-        const empresaId = req.query.tenant || req.query.empresa_id;
-        if (!empresaId) {
-            return res.status(400).json({ error: "Falta el identificador de la empresa (tenant)" });
-        }
-        res.json(await productService.getAllProducts(empresaId));
-    } catch(e) { 
-        res.status(500).json({ error: e.message }); 
-    }
-};
-
-module.exports = { getAll, getBatches, upsert, move, history, processAudit, getAuditHistory, getAuditDetails, getPublicAll };
+module.exports = { getAll, getBatches, upsert, move, history, processAudit, getAuditHistory, getAuditDetails };
