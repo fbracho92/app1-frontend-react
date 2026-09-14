@@ -22,7 +22,11 @@ export const TableQRModal = ({ isOpen, onClose, tenantBrand }) => {
         const encodedCompany = encodeURIComponent(tenantBrand?.companyName || '');
         const encodedRif = encodeURIComponent(tenantBrand?.companyDocument || '');
         
-        const catalogUrl = `${catalogBaseUrl}/catalogo?tenant=${tenantBrand?.id || '1'}&ubicacion=${locationType}_${identifier}&empresa=${encodedCompany}&rif=${encodedRif}`;
+        // 🛡️ BLINDAJE MULTI-INQUILINO: Extraemos el ID real del usuario logueado o del tenantBrand
+        const activeUser = JSON.parse(localStorage.getItem('bms_user') || '{}');
+        const secureTenantId = activeUser.empresa_id || tenantBrand?.id || '1';
+
+        const catalogUrl = `${catalogBaseUrl}/catalogo?tenant=${secureTenantId}&ubicacion=${locationType}_${identifier}&empresa=${encodedCompany}&rif=${encodedRif}`;
         const wifiString = `WIFI:S:${wifiSsid};T:${wifiSecurity};P:${wifiPass};;`;
 
         let label = 'UBICACIÓN ';

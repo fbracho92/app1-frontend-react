@@ -47,15 +47,23 @@ export function PublicCatalogView() {
                 // Si NO es silencioso, mostramos el spinner de carga
                 if (!isSilent) setLoading(true);
 
-                const [rateRes, prodRes] = await Promise.all([
-                    SettingsService.getExchangeRate(),
-                    ProductService.getAll() 
-                ]);
+                // 🚀 CONSUMO DEL ENDPOINT PÚBLICO BLINDADO (Cero Tokens)
+                const response = await fetch(`${API_URL}/public/catalog/${tenantId}`);
+                if (!response.ok) throw new Error('Catálogo no disponible o empresa inactiva');
+                const data = await response.json();
                 
                 // Si el componente se desmontó mientras cargaba, abortamos para no crashear
                 if (!isMounted) return;
                 
-                setBcvRate(rateRes.data.bcv_rate || 1);
+                setBcvRate(data.bcvRate || 1);
+                
+                // 🛡️ AUTO-SANADO UX: Sincronizamos el nombre del local directo desde la BD
+                if (data.empresa) {
+                    setTenantData({
+                        name: data.empresa.nombre,
+                        rif: data.empresa.rif
+                    });
+                }
 
                 const checkIsInternalService = (product) => {
                     const pName = (product.name || '').toUpperCase();
@@ -72,7 +80,7 @@ export function PublicCatalogView() {
                 };
 
                 // 🚀 UX PRO: FILTRO DEFINITIVO (Sin servicios internos y SIN productos agotados)
-                const activeProducts = (prodRes.data || []).filter(p => {
+                const activeProducts = (data.products || []).filter(p => {
                     const isService = p.is_service === true || p.is_service === 't' || p.is_service === 1;
                     const hasStock = isService || parseFloat(p.stock) > 0;
 

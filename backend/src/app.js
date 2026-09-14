@@ -42,8 +42,45 @@ app.use('/api/auth', authRoutes); // 🚨 Nueva
 const heldOrderController = require('./controllers/heldOrder.controller');
 app.post('/api/public/held-orders', heldOrderController.savePublicOrder);
 
+// 👇 [NUEVO SAAS] ENDPOINT PÚBLICO BLINDADO PARA EL CATÁLOGO QR 👇
+const pool = require('./config/db');
+const productService = require('./services/product.service');
+const { getRate } = require('./utils/bcvState');
+
+app.get('/api/public/catalog/:empresaId', async (req, res) => {
+    try {
+        const empresaId = parseInt(req.params.empresaId, 10);
+        if (isNaN(empresaId)) return res.status(400).json({ error: 'ID de empresa inválido' });
+
+        // 1. Validar que la empresa exista y NO esté suspendida (Blindaje Kill-Switch)
+        const empCheck = await pool.query(
+            'SELECT nombre, rif, logo_url FROM empresas WHERE id = $1 AND suspendido_manualmente = FALSE', 
+            [empresaId]
+        );
+        
+        if (empCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Catálogo no disponible o empresa inactiva' });
+        }
+
+        // 2. Extraer datos vitales para el QR (Productos filtrados y Tasa BCV Oficial)
+        const products = await productService.getAllProducts(empresaId);
+        const bcvRate = getRate() || 40.00;
+
+        res.json({
+            success: true,
+            empresa: empCheck.rows[0],
+            bcvRate,
+            products
+        });
+    } catch (error) {
+        console.error('❌ Error en catálogo público:', error.message);
+        res.status(500).json({ error: 'Error cargando el catálogo público' });
+    }
+});
+// 👆 FIN DEL ENDPOINT PÚBLICO 👆
+
 app.use('/api/master', verifyToken, saasRoutes);
-app.use('/api/sales', verifyToken, checkLicense, saleRoutes);          // Ventas y Anulaciones
+app.use('/api/sales', verifyToken, checkLicense, saleRoutes);         // Ventas y Anulaciones
 app.use('/api/users', verifyToken, checkLicense, userRoutes);
 app.use('/api/products', verifyToken, checkLicense, productRoutes);    // Productos
 app.use('/api/reports', verifyToken, checkLicense, reportRoutes);      // Reportes y Estadísticas
