@@ -384,18 +384,20 @@ function MainApp({ user, handleLogout }) {
 
 
     const [reportDateRange, setReportDateRange] = useState(() => {
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const toLocalISO = (date) => {
-            const offset = date.getTimezoneOffset() * 60000;
-            return new Date(date.getTime() - offset).toISOString().split('T')[0];
-        };
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const toLocalISO = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
 
-        return {
-            start: toLocalISO(firstDay), 
-            end: toLocalISO(now)         
-        };
-    });
+    return {
+        start: toLocalISO(firstDay), 
+        end: toLocalISO(now)         
+    };
+});
 
     const [salesSearch, setSalesSearch] = useState('');       
     const [inventorySearch, setInventorySearch] = useState(''); 
@@ -623,7 +625,7 @@ useEffect(() => {
                            !uName.includes('DESPACHO') && 
                            !uName.includes('AVANCE') && 
                            !uName.includes('FLETE');
-                }).slice(0, 5);
+                }).slice(0, 10);
 
                 // 2. Filtramos Categorías Fantasmas
                 initData.salesByCategory = (initData.salesByCategory || []).filter(item => {
@@ -804,7 +806,7 @@ useEffect(() => {
                            !uName.includes('DESPACHO') && 
                            !uName.includes('AVANCE') && 
                            !uName.includes('FLETE');
-                }).slice(0, 5);
+                }).slice(0, 10);
 
                 // 2. Limpiamos Categorías Fantasmas
                 rawData.salesByCategory = (rawData.salesByCategory || []).filter(item => {

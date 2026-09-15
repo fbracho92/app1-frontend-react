@@ -79,9 +79,9 @@ export const AdvancedReportsView = memo(({
             {/* CABECERA Y NAVEGACIÓN */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
                 <div>
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">Inteligencia de Negocios</h2>
+                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">Resumen Gerencial</h2>
                     <p className="text-slate-500 mt-1 font-medium">
-                        {reportTab === 'DASHBOARD' ? 'Análisis de rendimiento y KPIs' :
+                        {reportTab === 'DASHBOARD' ? 'Métricas y rendimiento general' :
                             reportTab === 'SALES' ? 'Explorador Detallado de Transacciones' :
                                 reportTab === 'INVENTORY' ? 'Auditoría Completa de Inventario' : 'Historial de Cierres de Caja'}
                     </p>
@@ -236,86 +236,143 @@ export const AdvancedReportsView = memo(({
                             </div>
 
                             {/* 2. GRÁFICAS */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div onClick={fetchInventoryDetail} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 cursor-pointer hover:border-blue-200 transition-colors group">
-                                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-50">
-                                        <div className="bg-yellow-100 p-2 rounded-xl text-yellow-600 text-xl">🏆</div>
-                                        <div>
-                                            <h3 className="font-bold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">Productos Estrella</h3>
-                                            <p className="text-xs text-slate-400">Clic para ver Inventario Completo</p>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                                {/* IZQUIERDA: Productos Estrella */}
+                                <div onClick={fetchInventoryDetail} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 cursor-pointer hover:border-blue-200 transition-colors group flex flex-col justify-between h-full">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-50">
+                                            <div className="bg-yellow-100 p-2 rounded-xl text-yellow-600 text-xl shrink-0">🏆</div>
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-bold text-slate-800 text-lg group-hover:text-blue-600 transition-colors truncate">Productos Estrella</h3>
+                                                <p className="text-xs text-slate-400 truncate">Clic para ver Inventario Completo</p>
+                                            </div>
                                         </div>
+                                        <SimpleBarChart data={(analyticsData.topProducts || []).slice(0, 10)} labelKey="name" valueKey="total_qty" colorClass="bg-yellow-400" formatMoney={false} />
                                     </div>
-                                    <SimpleBarChart data={analyticsData.topProducts} labelKey="name" valueKey="total_qty" colorClass="bg-yellow-400" formatMoney={false} />
                                 </div>
 
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-50">
-                                        <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600 text-xl">🏷️</div>
-                                        <div><h3 className="font-bold text-slate-800 text-lg">Rendimiento por Categoría</h3><p className="text-xs text-slate-400">Ingresos generados (Ref)</p></div>
+                                {/* DERECHA: Rendimiento por Categoría */}
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between h-full">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-50">
+                                            <div className="flex items-center gap-3 min-w-0 pr-2">
+                                                <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600 text-xl shrink-0">🏷️</div>
+                                                <div className="min-w-0">
+                                                    <h3 className="font-bold text-slate-800 text-lg truncate">Rendimiento por Categoría</h3>
+                                                    <p className="text-xs text-slate-400 truncate">Ingresos generados (Ref)</p>
+                                                </div>
+                                            </div>
+                                            {/* 🚀 UX PRO: Badge sutil y limpio que justifica el gráfico sin estorbar abajo */}
+                                            <span className="hidden sm:inline-block text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100 shrink-0">
+                                                Bimonetario
+                                            </span>
+                                        </div>
+                                        {/* 🚀 UX PRO: Filtramos las categorías en blanco al vuelo */}
+                                        <SimpleBarChart 
+                                            data={(analyticsData.salesByCategory || []).map(item => ({
+                                                ...item,
+                                                category: (item.category && item.category.trim() !== '') ? item.category : 'Sin Categoría'
+                                            }))} 
+                                            labelKey="category" 
+                                            valueKey="total_usd" 
+                                            colorClass="bg-indigo-500" 
+                                            formatMoney={true} 
+                                        />
                                     </div>
-                                    <SimpleBarChart data={analyticsData.salesByCategory} labelKey="category" valueKey="total_usd" colorClass="bg-indigo-500" formatMoney={true} />
                                 </div>
                             </div>
 
                             {/* 3. DEUDORES Y EVOLUCIÓN */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 lg:col-span-1">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="bg-red-100 p-2 rounded-xl text-red-600 text-lg">📉</div>
-                                        <h3 className="font-bold text-slate-800">Top Deudores</h3>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {topDebtors.slice(0, 5).map((debtor, idx) => (
-                                            <div key={idx} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">{debtor.full_name.charAt(0)}</div>
-                                                    <div><p className="text-xs font-bold text-slate-700 truncate w-24">{debtor.full_name}</p><p className="text-[10px] text-slate-400">Pendiente</p></div>
+                                {/* 🚀 UX PRO: Tarjeta adaptativa con Flexbox y sin elementos ocultos */}
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 lg:col-span-1 flex flex-col justify-between h-full">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="bg-red-100 p-2 rounded-xl text-red-600 text-lg">📉</div>
+                                            <h3 className="font-bold text-slate-800">Top Deudores</h3>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {topDebtors.slice(0, 10).map((debtor, idx) => (
+                                                <div key={idx} className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                                                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
+                                                            {debtor.full_name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-bold text-slate-700 truncate">{debtor.full_name}</p>
+                                                            <p className="text-[10px] text-slate-400">Pendiente</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="font-black text-red-500 text-sm whitespace-nowrap">
+                                                        Ref {parseFloat(debtor.debt).toFixed(2)}
+                                                    </span>
                                                 </div>
-                                                <span className="font-black text-red-500 text-sm">Ref {parseFloat(debtor.debt).toFixed(2)}</span>
-                                            </div>
-                                        ))}
-                                        {topDebtors.length === 0 && <p className="text-center text-slate-400 text-sm py-4">Sin deudas pendientes 🎉</p>}
+                                            ))}
+                                            
+                                            {topDebtors.length === 0 && (
+                                                <p className="text-center text-slate-400 text-sm py-8">Sin deudas pendientes 🎉</p>
+                                            )}
+                                        </div>
                                     </div>
+                                    
+                                    {/* 🚀 UX PRO: Micro-footer de auditoría */}
+                                    {topDebtors.length > 0 && (
+                                        <div className="mt-4 pt-3 border-t border-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right shrink-0">
+                                            Mostrando top {Math.min(topDebtors.length, 10)} cuentas
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 overflow-hidden flex flex-col">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="bg-slate-100 p-2 rounded-xl text-slate-600 text-lg">📅</div>
-                                        <h3 className="font-bold text-slate-800 text-lg">Evolución Diaria Detallada</h3>
+
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 overflow-hidden flex flex-col justify-between h-full">
+    <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex items-center gap-3 mb-4 shrink-0">
+            <div className="bg-slate-100 p-2 rounded-xl text-slate-600 text-lg">📅</div>
+            <h3 className="font-bold text-slate-800 text-lg">Evolución Diaria Detallada</h3>
+        </div>
+        
+        {/* El contenedor de la tabla mantiene el scroll interno */}
+        <div className="overflow-y-auto overflow-x-auto custom-scrollbar flex-1">
+            <table className="w-full text-left text-sm text-slate-600 relative">
+                <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                    <tr className="border-b-2 border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="px-4 py-3 bg-white">Fecha</th>
+                        <th className="px-4 py-3 bg-white text-center">Ops</th>
+                        <th className="px-4 py-3 bg-white text-right">Total Ref</th>
+                        <th className="px-4 py-3 bg-white text-right">Total Bs</th>
+                        <th className="px-4 py-3 bg-white text-center hidden sm:table-cell">Volumen</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                    {analyticsData.salesOverTime.map((day, idx) => {
+                        const maxDay = Math.max(...analyticsData.salesOverTime.map(d => parseFloat(d.total_usd)));
+                        const percent = maxDay > 0 ? (parseFloat(day.total_usd) / maxDay) * 100 : 0;
+                        return (
+                            <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                                <td className="px-4 py-3 font-medium text-slate-800">{new Date(day.sale_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                <td className="px-4 py-3 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-bold">{day.tx_count}</span></td>
+                                <td className="px-4 py-3 text-right font-black text-higea-blue">Ref {parseFloat(day.total_usd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-4 py-3 text-right text-slate-400 font-mono text-xs">Bs {parseFloat(day.total_ves).toLocaleString('es-VE', { maximumFractionDigits: 0 })}</td>
+                                <td className="px-4 py-3 align-middle hidden sm:table-cell w-32">
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                        <div className={`h-full rounded-full ${percent > 80 ? 'bg-green-500' : percent > 40 ? 'bg-blue-500' : 'bg-slate-400'}`} style={{ width: `${percent}%` }}></div>
                                     </div>
-                                    <div className="overflow-x-auto custom-scrollbar flex-1">
-                                        <table className="w-full text-left text-sm text-slate-600">
-                                            <thead>
-                                                <tr className="border-b-2 border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                                    <th className="px-4 py-3">Fecha</th>
-                                                    <th className="px-4 py-3 text-center">Ops</th>
-                                                    <th className="px-4 py-3 text-right">Total Ref</th>
-                                                    <th className="px-4 py-3 text-right">Total Bs</th>
-                                                    <th className="px-4 py-3 text-center hidden sm:table-cell">Volumen</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {analyticsData.salesOverTime.map((day, idx) => {
-                                                    const maxDay = Math.max(...analyticsData.salesOverTime.map(d => parseFloat(d.total_usd)));
-                                                    const percent = maxDay > 0 ? (parseFloat(day.total_usd) / maxDay) * 100 : 0;
-                                                    return (
-                                                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                                                            <td className="px-4 py-3 font-medium text-slate-800">{new Date(day.sale_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                                                            <td className="px-4 py-3 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-bold">{day.tx_count}</span></td>
-                                                            <td className="px-4 py-3 text-right font-black text-higea-blue">Ref {parseFloat(day.total_usd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
-                                                            <td className="px-4 py-3 text-right text-slate-400 font-mono text-xs">Bs {parseFloat(day.total_ves).toLocaleString('es-VE', { maximumFractionDigits: 0 })}</td>
-                                                            <td className="px-4 py-3 align-middle hidden sm:table-cell w-32">
-                                                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                                                    <div className={`h-full rounded-full ${percent > 80 ? 'bg-green-500' : percent > 40 ? 'bg-blue-500' : 'bg-slate-400'}`} style={{ width: `${percent}%` }}></div>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    )
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                                </td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {/* 🚀 UX PRO: Micro-footer en espejo con Top Deudores */}
+    {analyticsData.salesOverTime.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right shrink-0">
+            Resumen de {analyticsData.salesOverTime.length} días operativos
+        </div>
+    )}
+</div>
                             </div>
                         </div>
                     ) : (

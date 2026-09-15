@@ -4,6 +4,17 @@ import Swal from 'sweetalert2';
 import { formatBs, formatUSD } from './formatters';
 import { tenantConfig } from '../config/tenantConfig'; // <-- INYECCI��N DE MARCA BLANCA
 
+// ??? HELPER UX PRO: Sanitizaci車n extrema anti-mojibake para jsPDF
+const sanitizePDF = (text) => {
+    if (!text) return '';
+    return text.toString()
+        .normalize("NFD") // Separa las letras de los acentos
+        .replace(/[\u0300-\u036f]/g, "") // Borra los acentos puros (Ej: 谷 -> e)
+        .replace(/[^a-zA-Z0-9\s.,()\-:;/%&#]/g, "") // Destruye CUALQUIER s赤mbolo corrupto o "basura"
+        .replace(/\s+/g, " ") // Normaliza espacios dobles
+        .trim();
+};
+
 // --- FUNCI車N: IMPRIMIR REPORTE KARDEX (ADAPTADO A MARCA BLANCA, UX PRO Y LEGAL VZLA) ---
 export const printKardexReport = (kardexProduct, kardexHistory, bcvRate, userIdentity = null) => {
     if (!kardexProduct || kardexHistory.length === 0) return Swal.fire('Error', 'No hay datos para exportar', 'warning');
@@ -1770,12 +1781,12 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
 
     const doc = new jsPDF();
 
-    // ?? EXTRACCI車N BLINDADA DE DATOS JUR赤DICOS (MULTI-INQUILINO)
+    // ?? EXTRACCI車N BLINDADA CON SANITIZADOR
     const brandName = (tenantBrand?.companyName || tenantBrand?.tradeName || tenantConfig?.companyName || 'BMS Digital');
-    const safeName = brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const safeName = sanitizePDF(brandName);
     const safeId = tenantBrand?.companyDocument || tenantBrand?.id_number || tenantConfig?.companyDocument || tenantConfig?.id_number || 'J-00000000-0';
-    const safePhone = tenantBrand?.companyPhone || tenantBrand?.phone || tenantConfig?.companyPhone || tenantConfig?.phone || '';
-    const safeAddress = (tenantBrand?.companyAddress || tenantBrand?.address || tenantConfig?.companyAddress || tenantConfig?.address || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const safePhone = sanitizePDF(tenantBrand?.companyPhone || tenantBrand?.phone || tenantConfig?.companyPhone || tenantConfig?.phone || '');
+    const safeAddress = sanitizePDF(tenantBrand?.companyAddress || tenantBrand?.address || tenantConfig?.companyAddress || tenantConfig?.address || '');
 
     const colors = {
         primary: [0, 86, 179],   
@@ -1820,7 +1831,7 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
     doc.setFont('helvetica', 'bold');
     doc.text("Reporte Gerencial", 14, 25);
 
-    // ?? IMPRESI車N DE DATOS JUR赤DICOS MULTI-INQUILINO
+    // IMPRESI車N DE DATOS JUR赤DICOS MULTI-INQUILINO
     let headerY = 31;
     doc.setFontSize(10);
     doc.setTextColor(...colors.darkText);
@@ -1840,11 +1851,24 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
     }
 
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.primary);
-    headerY += 6;
-    const dateStart = new Date(reportDateRange.start).toLocaleDateString('es-VE');
-    const dateEnd = new Date(reportDateRange.end).toLocaleDateString('es-VE');
-    doc.text(`Periodo: ${dateStart} al ${dateEnd}`, 14, headerY);
+doc.setTextColor(...colors.primary);
+headerY += 6;
+
+// ??? FIX DEFINITIVO (DD/MM/YYYY limpio)
+const formatSafeDate = (dStr) => {
+    if (!dStr) return '';
+    const parts = String(dStr).split('-');
+    if (parts.length === 3) {
+        const [year, month, day] = parts;
+        return `${day}/${month}/${year}`;
+    }
+    return dStr;
+};
+
+const dateStart = formatSafeDate(reportDateRange.start);
+const dateEnd = formatSafeDate(reportDateRange.end);
+
+doc.text(`Periodo: ${dateStart} al ${dateEnd}`, 14, headerY);
 
     doc.setFontSize(8);
     doc.setTextColor(...colors.lightText);
@@ -1940,7 +1964,6 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
 
     doc.setFontSize(11);
     doc.setTextColor(...colors.darkText);
-    // ?? TOP 10
     doc.text("2. Productos Mas Vendidos (Top 10)", 14, finalY);
     finalY += 4;
 
@@ -1949,9 +1972,9 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
         startY: finalY,
         head: [['Producto', 'Unidades', 'Ingreso (Ref)']], 
         headStyles: { ...cleanTableStyles.headStyles, fillColor: colors.secondary },
-        // ?? CORTE EXACTO EN TOP 10 CON ESCUDO ANTI-UNDEFINED
+        // ?? APLICANDO SANITIZADOR AL PRODUCTO ESTRELLA
         body: (analyticsData.topProducts || []).slice(0, 10).map(row => [
-            (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+            sanitizePDF(row.name || 'Desconocido'),
             `${parseFloat(row.total_qty || 0)}`,
             `Ref ${parseFloat(row.total_revenue || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         ]),
@@ -1976,8 +1999,15 @@ export const exportReportToPDF = (analyticsData, reportDateRange, tenantBrand = 
         head: [['Categoria', 'Participacion', 'Total (Ref)']],
         body: (analyticsData.salesByCategory || []).map(row => {
             const percentage = totalUSD > 0 ? (parseFloat(row.total_usd || 0) / totalUSD * 100).toFixed(1) : 0;
+            
+            // ?? APLICANDO SANITIZADOR A LA CATEGOR赤A
+            let catName = sanitizePDF(row.category || 'Sin Categoria');
+            if (catName.toLowerCase().includes('categoria') || catName.toLowerCase().includes('categora')) {
+                catName = 'Sin Categoria';
+            }
+
             return [
-                (row.category || 'Sin Categor赤a').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+                catName,
                 `${percentage}%`,
                 `Ref ${parseFloat(row.total_usd || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ]
@@ -3209,8 +3239,9 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         return Swal.fire('Sin datos', 'No hay informaci車n suficiente para generar el an芍lisis completo.', 'warning');
     }
 
+    // ?? EXTRACCI車N BLINDADA CON SANITIZADOR
     const brandName = tenantBrand?.companyName || tenantBrand?.tradeName || tenantConfig?.companyName || 'BMS Digital';
-    const safeName = brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const safeName = sanitizePDF(brandName);
     const safeId = tenantBrand?.companyDocument || tenantBrand?.id_number || tenantConfig?.companyDocument || tenantConfig?.id_number || 'J-00000000-0';
     const currency = tenantConfig?.primaryCurrency || 'Bs';
 
@@ -3218,8 +3249,8 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
     const pageWidth = doc.internal.pageSize.width;
 
     const colors = {
-        primary: [30, 41, 59],     // Slate 800
-        secondary: [0, 86, 179],   // Azul Corporativo
+        primary: [30, 41, 59],     
+        secondary: [0, 86, 179],   
         darkText: [30, 41, 59],   
         lightText: [100, 116, 139], 
         bgLight: [248, 250, 252],  
@@ -3275,8 +3306,8 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         const totalVES = totalUSD * bcvRate;
         const percentage = totalUSDGeneral > 0 ? ((totalUSD / totalUSDGeneral) * 100).toFixed(1) : 0;
         
-        // ??? CORRECCI車N CERTIFICADA: Limpieza estricta anti-mojibake para evitar caracteres extra?os en tildes
-        let catName = row.category ? row.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : 'Sin Categoria';
+        // ?? APLICANDO SANITIZADOR A LA CATEGOR赤A
+        let catName = sanitizePDF(row.category || 'Sin Categoria');
         if (catName.toLowerCase().includes('categoria') || catName.toLowerCase().includes('categora')) {
             catName = 'Sin Categoria';
         }
@@ -3289,7 +3320,7 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         ];
     });
 
-    // ?? FILA DE TOTALES GENERALES - TABLA 1
+    // FILA DE TOTALES GENERALES - TABLA 1
     catBody.push([
         'TOTAL GENERAL',
         '100.0%',
@@ -3309,7 +3340,6 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
             3: { halign: 'right', fontStyle: 'bold', textColor: colors.secondary }
         },
         didParseCell: function(data) {
-            // Estilo resaltado para la fila de cierre
             if (data.section === 'body' && data.row.index === catBody.length - 1) {
                 data.cell.styles.fontStyle = 'bold';
                 data.cell.styles.fillColor = [226, 232, 240];
@@ -3332,14 +3362,15 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         const revVES = revUSD * bcvRate;
         const cleanQty = parseFloat(row.total_qty || 0);
         return [
-            (row.name || 'Desconocido').normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+            // ?? APLICANDO SANITIZADOR AL PRODUCTO
+            sanitizePDF(row.name || 'Desconocido'),
             `${cleanQty} UND`,
             formatBs(revVES),
             `Ref ${revUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         ];
     });
 
-    // ?? FILA DE TOTALES GENERALES - TABLA 2
+    // FILA DE TOTALES GENERALES - TABLA 2
     prodBody.push([
         'TOTAL GENERAL ACUMULADO',
         `${totalUnidadesGeneral} UND`,
@@ -3360,7 +3391,6 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
             3: { halign: 'right', fontStyle: 'bold', textColor: colors.success }
         },
         didParseCell: function(data) {
-            // Estilo resaltado para la fila de cierre
             if (data.section === 'body' && data.row.index === prodBody.length - 1) {
                 data.cell.styles.fontStyle = 'bold';
                 data.cell.styles.fillColor = [226, 232, 240];
@@ -3369,16 +3399,15 @@ export const printCategorySalesAnalyticsPDF = (analyticsData, reportDateRange, b
         }
     });
 
-    // Paginaci車n y Pie de p芍gina legal
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
         doc.setDrawColor(...colors.border);
         doc.line(14, 285, 196, 285);
-        doc.setFontSize(7);
+        doc.setFontSize(8);
         doc.setTextColor(...colors.lightText);
-        doc.text(`Analisis de Ventas por Categoria y Rango - ${safeName}`, 14, 290);
-        doc.text(`Pagina ${i} de ${pageCount}`, 196, 290, { align: 'right' });
+        doc.text(`Sistema ${safeName} - Reporte Gerencial`, 14, 290);
+        doc.text(`${i} / ${pageCount}`, 196, 290, { align: 'right' });
     }
 
     doc.save(`Ventas_Completas_Por_Categoria_${reportDateRange.start}_al_${reportDateRange.end}.pdf`);

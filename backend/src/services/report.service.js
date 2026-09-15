@@ -274,10 +274,10 @@ const getAnalytics = async (startDate, endDate, registerId, empresaId) => { // ð
             pDebtors.push(registerId); // $2
             qDebtors += ` AND s.register_id = $2 `;
         }
-        qDebtors += ` GROUP BY c.id, c.full_name ORDER BY debt DESC LIMIT 5`;
+        qDebtors += ` GROUP BY c.id, c.full_name ORDER BY debt DESC LIMIT 10`;
 
         const [topProducts, topCustomers, salesTime, salesCat, topDebtors] = await Promise.all([
-            client.query(`SELECT p.name, SUM(si.quantity) as total_qty, SUM(si.quantity * si.price_at_moment_usd) as total_revenue FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE s.created_at BETWEEN $1 AND $2 AND s.status != 'ANULADO' ${regFilter} GROUP BY p.id, p.name ORDER BY total_qty DESC LIMIT 5`, params),
+            client.query(`SELECT p.name, SUM(si.quantity) as total_qty, SUM(si.quantity * si.price_at_moment_usd) as total_revenue FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE s.created_at BETWEEN $1 AND $2 AND s.status != 'ANULADO' ${regFilter} GROUP BY p.id, p.name ORDER BY total_qty DESC LIMIT 10`, params),
             
             client.query(`SELECT c.full_name, COUNT(s.id) as transactions, SUM(s.amount_paid_usd) as total_spent FROM sales s JOIN customers c ON s.customer_id = c.id WHERE s.created_at BETWEEN $1 AND $2 AND s.status != 'ANULADO' ${regFilter} GROUP BY c.id, c.full_name ORDER BY total_spent DESC LIMIT 5`, params),
             
