@@ -1,76 +1,84 @@
 require('dotenv').config();
-// ðŸš€ PRESERVADO: Forzar Hora Venezuela a nivel global
+// ?? PRESERVADO: Forzar Hora Venezuela a nivel global
 process.env.TZ = 'America/Caracas'; 
 
 const app = require('./src/app');
 const actualizarTasaBCV = require('./src/utils/bcvScraper');
 
-// ðŸš¨ NUEVO: Importamos el cerebro de facturaciÃ³n SaaS
+// ?? IMPORTACIONES DE TAREAS PROGRAMADAS (CRON JOBS)
 const { startBillingCron } = require('./src/utils/billingCron');
+const { startDemoResetCron } = require('./src/utils/demoResetCron'); // <-- NUEVO: Cron de Reseteo Demo
 
-// ðŸš€ PRESERVADO: ConfiguraciÃ³n de DB y ejecuciÃ³n de migraciones
+// ?? PRESERVADO: Configuraci¨®n de DB y ejecuci¨®n de migraciones
 require('./src/config/db'); 
 
 const port = process.env.PORT || 3000;
 
-// 1. Iniciar Cron Jobs (Tasa del BCV y FacturaciÃ³n)
-console.log('ðŸ”„ Iniciando servicio de tasas (BCV)...');
+// 1. Iniciar Cron Jobs (Tasa del BCV y Tareas Autom¨¢ticas)
+console.log('?? Iniciando servicio de tasas (BCV)...');
 
-// BLINDAJE: EjecuciÃ³n inicial asÃ­ncrona para no bloquear el arranque
+// BLINDAJE: Ejecuci¨®n inicial as¨ªncrona para no bloquear el arranque del servidor
 const iniciarServicios = async () => {
     try {
         await actualizarTasaBCV();
-        console.log('âœ… Tasa inicial cargada correctamente.');
+        console.log('? Tasa inicial cargada correctamente.');
     } catch (err) {
-        // Si el BCV estÃ¡ caÃ­do, el servidor sigue encendido
-        console.error('âš ï¸ Aviso: No se pudo cargar la tasa inicial (BCV Offline).');
+        // Si el BCV est¨¢ ca¨ªdo, el servidor sigue encendido
+        console.error('?? Aviso: No se pudo cargar la tasa inicial (BCV Offline).');
     }
 
-    // ðŸš¨ BLINDAJE EXTRA: Iniciamos el Cron de FacturaciÃ³n independientemente del BCV
+    // ?? BLINDAJE EXTRA: Iniciamos el Cron de Facturaci¨®n independientemente del BCV
     try {
         startBillingCron();
     } catch (err) {
-        console.error('âŒ Error al iniciar el Cron de FacturaciÃ³n SaaS:', err.message);
+        console.error('? Error al iniciar el Cron de Facturaci¨®n SaaS:', err.message);
+    }
+
+    // ??? BLINDAJE DEMO: Iniciamos el Cron de Reseteo aislado para la Empresa 1
+    try {
+        startDemoResetCron();
+    } catch (err) {
+        console.error('? Error al iniciar el Cron de Reseteo Demo:', err.message);
     }
 };
 
 iniciarServicios();
 
-// ðŸš€ PRESERVADO: Actualizar cada hora (3600000 ms)
+// ?? PRESERVADO: Actualizar cada hora (3600000 ms)
 setInterval(async () => {
     try {
         await actualizarTasaBCV();
     } catch (err) {
-        console.error('âŒ Error en actualizaciÃ³n cÃ­clica de tasa:', err.message);
+        console.error('? Error en actualizaci¨®n c¨ªclica de tasa:', err.message);
     }
 }, 3600000);
 
 // 2. Iniciar Servidor Web
 const server = app.listen(port, () => {
     console.log(`=============================================`);
-    console.log(`ðŸš€ SERVIDOR BMS MODULAR ONLINE EN PUERTO: ${port}`);
-    console.log(`ðŸ“ ZONA HORARIA: ${process.env.TZ}`);
-    console.log(`ðŸ“¡ ENTORNO: ${process.env.NODE_ENV || 'production'}`);
+    console.log(`?? SERVIDOR BMS MODULAR ONLINE EN PUERTO: ${port}`);
+    console.log(`?? ZONA HORARIA: ${process.env.TZ}`);
+    console.log(`?? ENTORNO: ${process.env.NODE_ENV || 'production'}`);
     console.log(`=============================================`);
 });
 
 // 3. BLINDAJE ANTI-CRASH: Captura de errores fuera de las rutas de Express
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('ðŸš¨ Rechazo no manejado en:', promise, 'razÃ³n:', reason);
+    console.error('??? Rechazo no manejado en:', promise, 'raz¨®n:', reason);
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('ðŸš¨ ExcepciÃ³n no capturada:', err);
-    // En errores crÃ­ticos de memoria o CPU, cerramos para que Render reinicie la instancia
+    console.error('??? Excepci¨®n no capturada:', err);
+    // En errores cr¨ªticos de memoria o CPU, cerramos para que Render reinicie la instancia
     process.exit(1);
 });
 
 // 4. APAGADO ELEGANTE (Graceful Shutdown)
 // Vital para que Render cierre las conexiones a la DB correctamente al desplegar
 process.on('SIGTERM', () => {
-    console.log('ðŸ‘‹ SeÃ±al SIGTERM recibida. Cerrando servidor de forma segura...');
+    console.log('?? Se?al SIGTERM recibida. Cerrando servidor de forma segura...');
     server.close(() => {
-        console.log('ðŸ’¤ Procesos finalizados.');
+        console.log('?? Procesos finalizados.');
         process.exit(0);
     });
 });
