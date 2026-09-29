@@ -1027,7 +1027,12 @@ useEffect(() => {
     
     const printLegalDebtReport = () => DocGen.printLegalDebtReport(ReportService, bcvRate, user?.identity || tenantBrand);
     
-    const printSalesBookPDF = () => DocGen.printSalesBookPDF(reportDateRange, ReportService);
+    const printSalesBookPDF = () => DocGen.printSalesBookPDF(
+        reportDateRange, 
+        ReportService, 
+        user?.identity || tenantBrand, 
+        bcvRate
+    );
     
     const downloadCSV = (data, fileName) => DocGen.downloadCSV(data, fileName, bcvRate);
     

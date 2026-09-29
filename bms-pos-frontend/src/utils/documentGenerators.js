@@ -648,7 +648,7 @@ export const printLegalDebtReport = async (ReportService, bcvRate, userIdentity 
 };
 
 // --- NUEVO: LIBRO DE VENTAS SENIAT (MARCA BLANCA - FASE 3 BLINDADO) ---
-export const printSalesBookPDF = async (reportDateRange, ReportService) => {
+export const printSalesBookPDF = async (reportDateRange, ReportService, identity = {}, currentRate = 0) => {
     try {
         Swal.fire({
             title: 'Generando Libro de Ventas...',
@@ -665,8 +665,12 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
         Swal.close();
 
         if (!sales || sales.length === 0) {
-            return Swal.fire('VacÃ­o', 'No hay ventas en este rango', 'info');
+            return Swal.fire('Vac¨ªo', 'No hay ventas fiscales en este rango', 'info');
         }
+
+        // Datos del Contribuyente (Inquilino / Tenant activo)
+        const companyName = identity.companyName || identity.tradeName || 'BMS Digital';
+        const companyRif = identity.companyDocument || 'J-00000000-0';
 
         // Usamos formato horizontal grande (legal o a4 apaisado) para que quepan las columnas fiscales
         const doc = new jsPDF('l', 'mm', 'legal');
@@ -691,40 +695,43 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
         doc.text('CUMPLIMIENTO PROVIDENCIA ADMINISTRATIVA 0071', 14, 18);
 
         doc.setFontSize(9);
-        doc.text(`Contribuyente: ${tenantConfig.companyName}`, 14, 24);
-        doc.text(`RIF: ${tenantConfig.companyDocument}`, 14, 29);
+        // ??? REEMPLAZO SEGURO DE CARACTERES PARA EVITAR ROTURA DE UTF-8
+        doc.text(`Contribuyente: ${companyName}`, 14, 24);
+        doc.text(`RIF: ${companyRif}`, 14, 29);
 
-        doc.text(`PerÃ­odo Fiscal:`, pageWidth - 14, 12, { align: 'right' });
+        doc.text(`Periodo Fiscal:`, pageWidth - 14, 12, { align: 'right' });
         doc.setFont('helvetica', 'bold');
-        doc.text(`${new Date(reportDateRange.start).toLocaleDateString()} al ${new Date(reportDateRange.end).toLocaleDateString()}`, pageWidth - 14, 18, { align: 'right' });
+        doc.text(`${new Date(reportDateRange.start).toLocaleDateString('es-VE')} al ${new Date(reportDateRange.end).toLocaleDateString('es-VE')}`, pageWidth - 14, 18, { align: 'right' });
 
         autoTable(doc, {
             startY: 40,
             head: [[
-                'FECHA', 'RIF/CI', 'RAZÃ“N SOCIAL', 'NÂ° FACTURA', 'NÂ° CONTROL', 'NÂ° N/CRÃ‰DITO', 'MÃQ. FISCAL',
-                `TOTAL VENTAS`, `EXENTO`, `BASE IMP.`, `IVA (${tenantConfig.defaultTaxRate * 100}%)`, 'IGTF (3%)'
+                'FECHA', 'RIF/CI', 'RAZON SOCIAL', 'NRO FACTURA', 'NRO CONTROL', 'NRO N/CREDITO', 'MAQ. FISCAL',
+                `TOTAL VENTAS`, `EXENTO`, `BASE IMP.`, `IVA (16%)`, 'IGTF (3%)'
             ]],
-            // ðŸš¨ CORRECCIÃ“N DEFINITIVA: Separamos la venta real de su Nota de CrÃ©dito (ReversiÃ³n)
+            // ??? Separamos la venta real de su Nota de Cr¨¦dito (Reversi¨®n) y sumamos el Total
             body: sales.flatMap(s => {
-                const rate = parseFloat(s.tasa || 0);
+                const rate = parseFloat(s.tasa || currentRate || 1);
                 
                 // Calculamos los montos siempre en positivo primero
                 const exentoBs = parseFloat(s.subtotal_exempt_usd || 0) * rate;
                 const baseBs = parseFloat(s.subtotal_taxable_usd || 0) * rate;
                 const ivaBs = parseFloat(s.iva_usd || 0) * rate;
                 const igtfBs = parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * rate));
-                const totalBs = parseFloat(s.total_ves || 0);
+                
+                // El Total de Ventas debe ser matem¨¢ticamente la suma de todas las bases y tributos
+                const totalBs = exentoBs + baseBs + ivaBs + igtfBs;
 
                 const rows = [];
                 
-                // FILA 1: Factura Original (SIEMPRE en positivo, refleja que la venta ocurriÃ³ en el sistema)
+                // FILA 1: Factura Original (SIEMPRE en positivo, refleja que la venta ocurri¨® en el sistema)
                 rows.push([
                     new Date(s.created_at).toLocaleDateString('es-VE'),
-                    s.id_number || 'GENÃ‰RICO',
-                    (s.full_name || 'Consumidor Final').substring(0, 25),
+                    s.id_number || 'GENERICO',
+                    s.full_name || 'CONSUMIDOR FINAL',
                     s.invoice_number,
                     s.control_number,
-                    '-', // AquÃ­ no va N/C porque es la factura original
+                    '-', 
                     s.fiscal_machine_serial || '-',
                     formatBs(totalBs),
                     formatBs(exentoBs),
@@ -733,15 +740,15 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
                     formatBs(igtfBs)
                 ]);
 
-                // FILA 2: Si fue ANULADA, se inyecta la Nota de CrÃ©dito restando los montos
+                // FILA 2: Si fue ANULADA, se inyecta la Nota de Cr¨¦dito restando los montos
                 if (s.status === 'ANULADO') {
-                    // Si la mÃ¡quina no dio un NÂ° de N/C fiscal, le asignamos uno de control interno para justificar la reversiÃ³n
+                    // Si la m¨¢quina no dio un NRO de N/C fiscal, le asignamos uno de control interno para justificar la reversi¨®n
                     const ncNumber = s.credit_note_number || `NC-${s.id}`;
                     
                     rows.push([
                         new Date(s.created_at).toLocaleDateString('es-VE'),
-                        s.id_number || 'GENÃ‰RICO',
-                        (s.full_name || 'Consumidor Final').substring(0, 25),
+                        s.id_number || 'GENERICO',
+                        s.full_name || 'CONSUMIDOR FINAL',
                         s.invoice_number, // Referencia a la factura que anula
                         s.credit_note_control || s.control_number || '-', 
                         ncNumber, 
@@ -756,7 +763,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
 
                 return rows;
             }),
-            styles: { fontSize: 7, cellPadding: 2 },
+            styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' }, // Permite saltos de l¨ªnea autom¨¢ticos
             headStyles: {
                 fillColor: colors.header,
                 textColor: 255,
@@ -767,6 +774,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
             columnStyles: {
                 0: { cellWidth: 15 },
                 1: { cellWidth: 20 },
+                2: { cellWidth: 45 }, // Ampliado y habilitado para textos largos (Raz¨®n Social)
                 3: { halign: 'center' },
                 4: { halign: 'center' },
                 5: { halign: 'center' }, 
@@ -777,7 +785,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
                 10: { halign: 'right' },
                 11: { halign: 'right' }
             },
-            // Estilo visual: Las Notas de CrÃ©dito se pintarÃ¡n de rojo
+            // Estilo visual: Las Notas de Cr¨¦dito se pintar¨¢n de rojo
             didParseCell: function(data) {
                 if (data.section === 'body') {
                     const isCreditNoteRow = data.row.raw[5] !== '-'; 
@@ -792,26 +800,26 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
             }
         });
 
-        // Sumatorias finales del mes (Como las anuladas restan lo mismo que sumÃ³ la factura original, contablemente aportan 0 al total a declarar)
-        const totalBase = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || 0)), 0);
-        const totalIva = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.iva_usd || 0) * parseFloat(s.tasa || 0)), 0);
-        const totalExento = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_exempt_usd || 0) * parseFloat(s.tasa || 0)), 0);
-        const totalIgtf = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * parseFloat(s.tasa || 0)))), 0);
+        // Sumatorias finales del mes
+        const totalBase = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
+        const totalIva = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.iva_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
+        const totalExento = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_exempt_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
+        const totalIgtf = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * parseFloat(s.tasa || currentRate || 1)))), 0);
 
         let finalY = doc.lastAutoTable.finalY + 10;
 
         doc.setFontSize(10);
         doc.setTextColor(0);
         doc.setFont('helvetica', 'bold');
-        doc.text(`RESUMEN DEL PERÃODO (En ${tenantConfig.primaryCurrency === 'Bs' ? 'BolÃ­vares' : tenantConfig.primaryCurrency}):`, 14, finalY);
+        doc.text(`RESUMEN DEL PERIODO (En Bolivares):`, 14, finalY);
 
         autoTable(doc, {
             startY: finalY + 2,
-            head: [['CONCEPTO', 'BASE IMPONIBLE', `DÃ‰BITO FISCAL (${tenantConfig.taxName})`]],
+            head: [['CONCEPTO', 'BASE IMPONIBLE', `DEBITO FISCAL (IVA)`]],
             body: [
                 ['Ventas Internas No Gravadas (Exentas)', formatBs(totalExento), '0,00'],
-                [`Ventas Internas Gravadas (${tenantConfig.defaultTaxRate * 100}%)`, formatBs(totalBase), formatBs(totalIva)],
-                ['PercepciÃ³n IGTF (3%)', '0,00', formatBs(totalIgtf)],
+                [`Ventas Internas Gravadas (16%)`, formatBs(totalBase), formatBs(totalIva)],
+                ['Percepcion IGTF (3%)', '0,00', formatBs(totalIgtf)],
                 ['TOTALES', formatBs(totalBase + totalExento), formatBs(totalIva + totalIgtf)]
             ],
             theme: 'grid',
@@ -828,7 +836,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
         const bottomY = doc.lastAutoTable.finalY + 10;
         doc.setFontSize(7);
         doc.setTextColor(150);
-        doc.text("DeclaraciÃ³n jurada sin tachaduras ni enmiendas. Expresado en moneda de curso legal segÃºn Providencia 0071.", 14, bottomY);
+        doc.text("Declaracion jurada sin tachaduras ni enmiendas. Expresado en moneda de curso legal segun Providencia 0071.", 14, bottomY);
 
         doc.setDrawColor(0);
         doc.line(200, bottomY, 300, bottomY); 
@@ -838,7 +846,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService) => {
 
     } catch (error) {
         console.error('QA Error:', error);
-        Swal.fire('Error', 'No se pudo conectar con el servidor para generar el reporte', 'error');
+        Swal.fire('Error', 'No se pudo generar el Libro de Ventas en PDF', 'error');
     }
 };
 

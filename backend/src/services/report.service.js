@@ -381,15 +381,17 @@ const getSalesBook = async (startDate, endDate, registerId, empresaId) => { // �
             s.created_at, 
             s.invoice_type, 
             s.status, 
-            COALESCE(s.fiscal_invoice_number, CAST(s.id AS VARCHAR)) as invoice_number,
+            COALESCE(s.fiscal_invoice_number, s.control_number, CAST(s.id AS VARCHAR)) as invoice_number,
             COALESCE(s.fiscal_control_number, s.control_number, '00-' || s.id) as control_number,
             s.fiscal_machine_serial,
             s.credit_note_number,
             s.credit_note_control,
-            c.full_name, 
-            c.id_number, 
+            -- 🛡️ BLINDAJE SENIAT: Prioriza Institución (Razón Social), luego Nombre, o Consumidor Final
+            COALESCE(NULLIF(c.institution, ''), NULLIF(c.full_name, ''), 'CONSUMIDOR FINAL') as full_name, 
+            COALESCE(NULLIF(c.id_number, ''), 'V-000000000') as id_number, 
             s.bcv_rate_snapshot as tasa, 
             s.total_ves,
+            s.total_usd,
             s.subtotal_taxable_usd, 
             s.subtotal_exempt_usd, 
             s.iva_usd, 
@@ -410,7 +412,9 @@ const getSalesBook = async (startDate, endDate, registerId, empresaId) => { // �
         params.push(registerId);
         queryText += ` AND s.register_id = $4 `;
     }
-    queryText += ` ORDER BY s.created_at ASC`;
+    
+    // 🛡️ BLINDAJE CRONOLÓGICO: Orden exacto para auditorías
+    queryText += ` ORDER BY s.created_at ASC, s.id ASC`;
 
     const result = await pool.query(queryText, params);
     return result.rows;
