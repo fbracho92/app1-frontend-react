@@ -141,7 +141,26 @@ const createSale = async (data, empresaId) => {
         const finalTotalUsd = (subtotalTaxableUsd + subtotalExemptUsd + ivaUsd) - discountUsd;
         const totalVes = finalTotalUsd * rateToUse; 
         
-        const finalIgtfUsd = igtf_usd ? parseFloat(igtf_usd) : 0;
+        // 🛡️ BLINDAJE FISCAL IGTF: Cálculo automático de 3% si paga en divisas
+        let calculatedIgtfUsd = 0;
+        const isFiscalSale = (invoice_type === 'FORMA_LIBRE' || invoice_type === 'FISCAL');
+        const payMethodStr = (payment_method || '').toUpperCase();
+        
+        // Verifica si el método de pago incluye moneda extranjera
+        const usesForeignCurrency = payMethodStr.includes('USD') || 
+                                    payMethodStr.includes('DIVISA') || 
+                                    payMethodStr.includes('ZELLE') || 
+                                    payMethodStr.includes('REF');
+
+        if (igtf_usd !== undefined && igtf_usd !== null && parseFloat(igtf_usd) > 0) {
+            // 1. Si el IGTF ya viene calculado desde la interfaz (Modal de Pago), se respeta
+            calculatedIgtfUsd = parseFloat(igtf_usd);
+        } else if (isFiscalSale && usesForeignCurrency) {
+            // 2. Si no viene calculado, pero cumple las condiciones de ley, se aplica el 3% al total
+            calculatedIgtfUsd = parseFloat((finalTotalUsd * 0.03).toFixed(2));
+        }
+
+        const finalIgtfUsd = calculatedIgtfUsd;
         const finalIgtfVes = finalIgtfUsd * rateToUse;
 
         // 5. Estado de Pago
