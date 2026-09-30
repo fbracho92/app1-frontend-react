@@ -668,9 +668,10 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
             return Swal.fire('Vac赤o', 'No hay ventas fiscales en este rango', 'info');
         }
 
-        // Datos del Contribuyente (Inquilino / Tenant activo)
-        const companyName = identity.companyName || identity.tradeName || 'BMS Digital';
-        const companyRif = identity.companyDocument || 'J-00000000-0';
+        // ??? BLINDAJE: Sanitizaci車n estricta de la identidad del Contribuyente
+        const rawCompanyName = identity.companyName || identity.tradeName || 'BMS Digital';
+        const companyName = sanitizePDF(rawCompanyName);
+        const companyRif = sanitizePDF(identity.companyDocument || 'J-00000000-0');
 
         // Usamos formato horizontal grande (legal o a4 apaisado) para que quepan las columnas fiscales
         const doc = new jsPDF('l', 'mm', 'legal');
@@ -695,13 +696,13 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
         doc.text('CUMPLIMIENTO PROVIDENCIA ADMINISTRATIVA 0071', 14, 18);
 
         doc.setFontSize(9);
-        // ??? REEMPLAZO SEGURO DE CARACTERES PARA EVITAR ROTURA DE UTF-8
+        // ??? Textos libres de acentos para jsPDF
         doc.text(`Contribuyente: ${companyName}`, 14, 24);
         doc.text(`RIF: ${companyRif}`, 14, 29);
 
         doc.text(`Periodo Fiscal:`, pageWidth - 14, 12, { align: 'right' });
         doc.setFont('helvetica', 'bold');
-        doc.text(`${new Date(reportDateRange.start).toLocaleDateString('es-VE')} al ${new Date(reportDateRange.end).toLocaleDateString('es-VE')}`, pageWidth - 14, 18, { align: 'right' });
+        doc.text(`${new Date(reportDateRange.start + 'T00:00:00').toLocaleDateString('es-VE')} al ${new Date(reportDateRange.end + 'T00:00:00').toLocaleDateString('es-VE')}`, pageWidth - 14, 18, { align: 'right' });
 
         autoTable(doc, {
             startY: 40,
@@ -722,15 +723,19 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
                 // El Total de Ventas debe ser matem芍ticamente la suma de todas las bases y tributos
                 const totalBs = exentoBs + baseBs + ivaBs + igtfBs;
 
+                // ??? BLINDAJE: Sanitizamos el nombre del cliente para evitar roturas si escribieron con tildes
+                const cleanClientName = sanitizePDF(s.full_name || 'CONSUMIDOR FINAL');
+                const cleanIdNumber = sanitizePDF(s.id_number || 'GENERICO');
+
                 const rows = [];
                 
                 // FILA 1: Factura Original (SIEMPRE en positivo, refleja que la venta ocurri車 en el sistema)
                 rows.push([
                     new Date(s.created_at).toLocaleDateString('es-VE'),
-                    s.id_number || 'GENERICO',
-                    s.full_name || 'CONSUMIDOR FINAL',
-                    s.invoice_number,
-                    s.control_number,
+                    cleanIdNumber,
+                    cleanClientName,
+                    s.invoice_number || '-',
+                    s.control_number || '-',
                     '-', 
                     s.fiscal_machine_serial || '-',
                     formatBs(totalBs),
@@ -747,8 +752,8 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
                     
                     rows.push([
                         new Date(s.created_at).toLocaleDateString('es-VE'),
-                        s.id_number || 'GENERICO',
-                        s.full_name || 'CONSUMIDOR FINAL',
+                        cleanIdNumber,
+                        cleanClientName,
                         s.invoice_number, // Referencia a la factura que anula
                         s.credit_note_control || s.control_number || '-', 
                         ncNumber, 
@@ -774,7 +779,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
             columnStyles: {
                 0: { cellWidth: 15 },
                 1: { cellWidth: 20 },
-                2: { cellWidth: 45 }, // Ampliado y habilitado para textos largos (Raz車n Social)
+                2: { cellWidth: 50 }, // Ampliado para textos largos (Raz車n Social)
                 3: { halign: 'center' },
                 4: { halign: 'center' },
                 5: { halign: 'center' }, 

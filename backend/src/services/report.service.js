@@ -386,8 +386,8 @@ const getSalesBook = async (startDate, endDate, registerId, empresaId) => { // �
             s.fiscal_machine_serial,
             s.credit_note_number,
             s.credit_note_control,
-            -- 🛡️ BLINDAJE SENIAT: Prioriza Institución (Razón Social), luego Nombre, o Consumidor Final
-            COALESCE(NULLIF(c.institution, ''), NULLIF(c.full_name, ''), 'CONSUMIDOR FINAL') as full_name, 
+            -- 👇 ESTA ES LA LÍNEA CLAVE QUE DEBE LEER NODE.JS 👇
+            COALESCE(NULLIF(c.full_name, ''), 'CONSUMIDOR FINAL') as full_name, 
             COALESCE(NULLIF(c.id_number, ''), 'V-000000000') as id_number, 
             s.bcv_rate_snapshot as tasa, 
             s.total_ves,
@@ -413,7 +413,6 @@ const getSalesBook = async (startDate, endDate, registerId, empresaId) => { // �
         queryText += ` AND s.register_id = $4 `;
     }
     
-    // 🛡️ BLINDAJE CRONOLÓGICO: Orden exacto para auditorías
     queryText += ` ORDER BY s.created_at ASC, s.id ASC`;
 
     const result = await pool.query(queryText, params);
