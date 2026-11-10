@@ -134,11 +134,31 @@ const createSale = async (data, empresaId) => {
             // Nota: La variable item.inventoryQty ya está lista, pasará al Paso 7 para guardarse en el Kardex
         }
         
-        // 4. Cálculos Financieros e IGTF
+        // ========================================================================
+        // 4. Cálculos Financieros, Prorrateo de Descuentos e IGTF
+        // ========================================================================
         const IVA_RATE = 0.16;
-        const ivaUsd = subtotalTaxableUsd * IVA_RATE;
         const discountUsd = discount ? parseFloat(discount) : 0;
-        const finalTotalUsd = (subtotalTaxableUsd + subtotalExemptUsd + ivaUsd) - discountUsd;
+        
+        // 🛡️ CORRECCIÓN CRÍTICA: Prorrateo del descuento sobre las bases
+        // Si hay descuento, reducimos proporcionalmente la base exenta y gravable ANTES de guardar en BD
+        let finalTaxableUsd = subtotalTaxableUsd;
+        let finalExemptUsd = subtotalExemptUsd;
+        
+        if (discountUsd > 0) {
+            const rawTotalBaseUsd = subtotalTaxableUsd + subtotalExemptUsd;
+            if (rawTotalBaseUsd > 0) {
+                const proportionTaxable = subtotalTaxableUsd / rawTotalBaseUsd;
+                const proportionExempt = subtotalExemptUsd / rawTotalBaseUsd;
+                
+                finalTaxableUsd = subtotalTaxableUsd - (discountUsd * proportionTaxable);
+                finalExemptUsd = subtotalExemptUsd - (discountUsd * proportionExempt);
+            }
+        }
+
+        // Calculamos el IVA sobre la nueva base imponible neta
+        const ivaUsd = finalTaxableUsd * IVA_RATE;
+        const finalTotalUsd = finalTaxableUsd + finalExemptUsd + ivaUsd;
         const totalVes = finalTotalUsd * rateToUse; 
         
         // 🛡️ BLINDAJE FISCAL IGTF: Cálculo automático de 3% si paga en divisas
@@ -146,17 +166,16 @@ const createSale = async (data, empresaId) => {
         const isFiscalSale = (invoice_type === 'FORMA_LIBRE' || invoice_type === 'FISCAL');
         const payMethodStr = (payment_method || '').toUpperCase();
         
-        // Verifica si el método de pago incluye moneda extranjera
+        // Verifica si el método de pago inicial incluye moneda extranjera
         const usesForeignCurrency = payMethodStr.includes('USD') || 
                                     payMethodStr.includes('DIVISA') || 
                                     payMethodStr.includes('ZELLE') || 
                                     payMethodStr.includes('REF');
 
         if (igtf_usd !== undefined && igtf_usd !== null && parseFloat(igtf_usd) > 0) {
-            // 1. Si el IGTF ya viene calculado desde la interfaz (Modal de Pago), se respeta
             calculatedIgtfUsd = parseFloat(igtf_usd);
         } else if (isFiscalSale && usesForeignCurrency) {
-            // 2. Si no viene calculado, pero cumple las condiciones de ley, se aplica el 3% al total
+            // Se aplica el 3% al total facturado pagado en divisas
             calculatedIgtfUsd = parseFloat((finalTotalUsd * 0.03).toFixed(2));
         }
 
@@ -263,9 +282,10 @@ const createSale = async (data, empresaId) => {
                 created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW() AT TIME ZONE 'America/Caracas') RETURNING id, created_at`;
             
+        // 🛡️ REFUERZO: SE ASEGURAN LAS BASES DESCONTADAS
         const saleValues = [
             finalTotalUsd.toFixed(2), totalVes.toFixed(2), rateToUse, finalPaymentMethod, saleStatus, finalCustomerId, dueDate,
-            subtotalTaxableUsd.toFixed(2), subtotalExemptUsd.toFixed(2), IVA_RATE, ivaUsd.toFixed(2), amountPaidUsd.toFixed(2), invoice_type || 'TICKET',
+            finalTaxableUsd.toFixed(2), finalExemptUsd.toFixed(2), IVA_RATE, ivaUsd.toFixed(2), amountPaidUsd.toFixed(2), invoice_type || 'TICKET',
             discountUsd.toFixed(2), !!is_delivery, is_delivery && delivery_info ? delivery_info : null,
             finalInvoiceNumber, finalFiscalControl, fiscal_machine_serial || null, finalIgtfUsd.toFixed(2), finalIgtfVes.toFixed(2),
             activeRegisterId, empresaId, 
