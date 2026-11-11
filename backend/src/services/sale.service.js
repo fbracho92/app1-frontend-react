@@ -338,6 +338,8 @@ const createSale = async (data, empresaId) => {
             fiscal_invoice_number: finalInvoiceNumber, 
             fiscal_control_number: finalFiscalControl,
             control_number: internalControlNumber,
+			igtf_usd: finalIgtfUsd,
+			igtf_ves: finalIgtfVes,
             message: 'Venta exitosa', 
             status: saleStatus 
         };

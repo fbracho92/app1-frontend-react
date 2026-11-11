@@ -574,8 +574,11 @@ export const usePOS = ({ bcvRate, onRequireCashOpen, onGlobalUpdate, generateRec
                 if (finalInvoiceType === 'FORMA_LIBRE' || finalInvoiceType === 'TICKET') {
                    // CORRECCIÓN FASE 5: Usar el correlativo legal si existe, sino el ID interno
                    const invoiceNumberToPrint = res.data.fiscal_invoice_number || res.data.saleId || '000';
+				   
+				   // AÑADIDO: Priorizar el IGTF oficial guardado en Base de Datos
+                   const finalIgtfToPrint = parseFloat(res.data.igtf_usd || igtfGeneratedUSD || 0);
                    
-                   setReceiptPreview(generateReceiptHTML(invoiceNumberToPrint, payloadCustomerData, cart, finalInvoiceType, 'PAGADO', new Date(), finalTotalUSD, bcvRate, paymentDescription, igtfGeneratedUSD, discountUSD, res.data.fiscal_control_number));
+                   setReceiptPreview(generateReceiptHTML(invoiceNumberToPrint, payloadCustomerData, cart, finalInvoiceType, 'PAGADO', new Date(), finalTotalUSD, bcvRate, paymentDescription, finalIgtfToPrint, discountUSD, res.data.fiscal_control_number));
                 }
             }
 
