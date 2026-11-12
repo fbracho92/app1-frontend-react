@@ -717,7 +717,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
                 // Calculamos los montos siempre en positivo primero
                 const exentoBs = parseFloat(s.subtotal_exempt_usd || 0) * rate;
                 const baseBs = parseFloat(s.subtotal_taxable_usd || 0) * rate;
-                const ivaBs = parseFloat(s.iva_usd || 0) * rate;
+                const ivaBs = baseBs * parseFloat(s.iva_rate || 0.16);
                 const igtfBs = parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * rate));
                 
                 // El Total de Ventas debe ser matem¨¢ticamente la suma de todas las bases y tributos
@@ -807,7 +807,7 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
 
         // Sumatorias finales del mes
         const totalBase = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
-        const totalIva = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.iva_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
+        const totalIva = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : (parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || currentRate || 1)) * parseFloat(s.iva_rate || 0.16)), 0);
         const totalExento = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_exempt_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
         const totalIgtf = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * parseFloat(s.tasa || currentRate || 1)))), 0);
 
