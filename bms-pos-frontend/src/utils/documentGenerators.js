@@ -714,9 +714,24 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
             body: sales.flatMap(s => {
                 const rate = parseFloat(s.tasa || currentRate || 1);
                 
-                // Calculamos los montos siempre en positivo primero
-                const exentoBs = parseFloat(s.subtotal_exempt_usd || 0) * rate;
-                const baseBs = parseFloat(s.subtotal_taxable_usd || 0) * rate;
+                // 1. Calculamos el descuento y las bases brutas en Bs
+                const descuentoBs = parseFloat(s.discount_usd || 0) * rate;
+                const rawExentoBs = parseFloat(s.subtotal_exempt_usd || 0) * rate;
+                const rawBaseBs = parseFloat(s.subtotal_taxable_usd || 0) * rate;
+                const rawTotalBs = rawExentoBs + rawBaseBs;
+
+                // 2. Prorrateamos el descuento a las bases
+                let exentoBs = rawExentoBs;
+                let baseBs = rawBaseBs;
+
+                if (descuentoBs > 0 && rawTotalBs > 0) {
+                    const propExento = rawExentoBs / rawTotalBs;
+                    const propBase = rawBaseBs / rawTotalBs;
+                    exentoBs = rawExentoBs - (descuentoBs * propExento);
+                    baseBs = rawBaseBs - (descuentoBs * propBase);
+                }
+
+                // 3. Calculamos IVA sobre la base neta, e IGTF
                 const ivaBs = baseBs * parseFloat(s.iva_rate || 0.16);
                 const igtfBs = parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * rate));
                 
@@ -805,11 +820,35 @@ export const printSalesBookPDF = async (reportDateRange, ReportService, identity
             }
         });
 
-        // Sumatorias finales del mes
-        const totalBase = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
-        const totalIva = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : (parseFloat(s.subtotal_taxable_usd || 0) * parseFloat(s.tasa || currentRate || 1)) * parseFloat(s.iva_rate || 0.16)), 0);
-        const totalExento = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.subtotal_exempt_usd || 0) * parseFloat(s.tasa || currentRate || 1)), 0);
-        const totalIgtf = sales.reduce((acc, s) => acc + (s.status === 'ANULADO' ? 0 : parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * parseFloat(s.tasa || currentRate || 1)))), 0);
+        let totalBase = 0;
+        let totalIva = 0;
+        let totalExento = 0;
+        let totalIgtf = 0;
+
+        sales.forEach(s => {
+            if (s.status === 'ANULADO') return;
+
+            const rate = parseFloat(s.tasa || currentRate || 1);
+            const descuentoBs = parseFloat(s.discount_usd || 0) * rate;
+            const rawExentoBs = parseFloat(s.subtotal_exempt_usd || 0) * rate;
+            const rawBaseBs = parseFloat(s.subtotal_taxable_usd || 0) * rate;
+            const rawTotalBs = rawExentoBs + rawBaseBs;
+
+            let exentoBs = rawExentoBs;
+            let baseBs = rawBaseBs;
+
+            if (descuentoBs > 0 && rawTotalBs > 0) {
+                const propExento = rawExentoBs / rawTotalBs;
+                const propBase = rawBaseBs / rawTotalBs;
+                exentoBs = rawExentoBs - (descuentoBs * propExento);
+                baseBs = rawBaseBs - (descuentoBs * propBase);
+            }
+
+            totalBase += baseBs;
+            totalIva += baseBs * parseFloat(s.iva_rate || 0.16);
+            totalExento += exentoBs;
+            totalIgtf += parseFloat(s.igtf_ves || (parseFloat(s.igtf_usd || 0) * rate));
+        });
 
         let finalY = doc.lastAutoTable.finalY + 10;
 
